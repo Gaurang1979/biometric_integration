@@ -2,6 +2,11 @@
 
 Direct Hikvision ISAPI integration for ERPNext HRMS.
 
+## Documentation
+
+- **[HR User Guide](docs/HR_USER_GUIDE.md)** — detailed configuration, employee mapping, manual testing, automatic synchronization, daily HR operation, troubleshooting, security and production checklists.
+- **Illustrative diagrams** are available in `docs/images/`.
+
 ## Current scope
 
 - Multiple Hikvision devices in one `Biometric Integration Settings` record.
@@ -26,7 +31,7 @@ The tested DS-K1T320MFWX returns `minor=21` and `minor=22` events around success
 2. Run migrate.
 3. Open **Biometric Integration Settings**.
 4. Add one row per Hikvision terminal.
-5. Enter IP, username, password, latitude, longitude and timezone (`Asia/Kolkata` for India).
+5. Enter the device host, credentials, latitude, longitude and timezone.
 6. Use **Fetch Device Info** / **Test All Devices**.
 7. Use **Import Attendance** for a controlled historical test.
 8. Inspect the generated **Employee Checkin** records.
@@ -34,8 +39,10 @@ The tested DS-K1T320MFWX returns `minor=21` and `minor=22` events around success
 
 ## Employee mapping
 
-Set each employee's **Attendance Device ID** to exactly match the Hikvision `employeeNoString`, for example `BO10`.
+Set each employee's **Attendance Device ID** to exactly match the Hikvision `employeeNoString`.
 
 ## Safety
 
 The scheduler is disabled by default. It will not import anything until `Enable Biometric Integration` and `Enable Automatic Synchronization` are enabled.
+
+Never commit production URLs, IP addresses, usernames/passwords, employee data, biometric templates, API keys, certificates, database backups or other secrets to this repository.
