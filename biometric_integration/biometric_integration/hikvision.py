@@ -5,6 +5,7 @@ import xml.etree.ElementTree as ET
 import frappe
 import requests
 from requests.auth import HTTPDigestAuth
+from frappe.utils.password import get_decrypted_password
 
 
 EVENT_MAJOR = 5
@@ -27,7 +28,7 @@ def _get_device(device_name):
 
 
 def _password(device):
-    return frappe.utils.password.get_decrypted_password("Biometric Device", device.name, "password")
+    return get_decrypted_password("Biometric Device", device.name, "password")
 
 
 def _auth(device):
@@ -42,23 +43,11 @@ def _base_url(device):
 
 
 def _post_json(device, path, payload, timeout=60):
-    return requests.post(
-        f"{_base_url(device)}{path}",
-        auth=_auth(device),
-        headers={"Content-Type": "application/json"},
-        json=payload,
-        verify=False,
-        timeout=timeout,
-    )
+    return requests.post(f"{_base_url(device)}{path}", auth=_auth(device), headers={"Content-Type": "application/json"}, json=payload, verify=False, timeout=timeout)
 
 
 def _get(device, path, timeout=30):
-    return requests.get(
-        f"{_base_url(device)}{path}",
-        auth=_auth(device),
-        verify=False,
-        timeout=timeout,
-    )
+    return requests.get(f"{_base_url(device)}{path}", auth=_auth(device), verify=False, timeout=timeout)
 
 
 def _parse_device_info(content):
@@ -69,13 +58,7 @@ def _parse_device_info(content):
         node = root.find(f"ns:{tag}", ns)
         return node.text.strip() if node is not None and node.text else ""
 
-    return {
-        "device_name": value("deviceName"),
-        "device_id": value("deviceID"),
-        "model": value("model"),
-        "serial_number": value("serialNumber"),
-        "mac_address": value("macAddress"),
-    }
+    return {"device_name": value("deviceName"), "device_id": value("deviceID"), "model": value("model"), "serial_number": value("serialNumber"), "mac_address": value("macAddress")}
 
 
 @frappe.whitelist()
@@ -109,7 +92,6 @@ def fetch_device_info(device_name):
     result = test_device(device_name)
     if result.get("status") != "success":
         return result
-
     info = result["device"]
     for fieldname in ("device_id", "model", "serial_number", "mac_address"):
         frappe.db.set_value("Biometric Device", device.name, fieldname, info.get(fieldname, ""), update_modified=False)
@@ -120,17 +102,7 @@ def fetch_device_info(device_name):
 
 
 def _event_payload(start_time, end_time, position, search_id):
-    return {
-        "AcsEventCond": {
-            "searchID": search_id,
-            "searchResultPosition": position,
-            "maxResults": EVENT_PAGE_SIZE,
-            "major": EVENT_MAJOR,
-            "minor": EVENT_MINOR,
-            "startTime": start_time,
-            "endTime": end_time,
-        }
-    }
+    return {"AcsEventCond": {"searchID": search_id, "searchResultPosition": position, "maxResults": EVENT_PAGE_SIZE, "major": EVENT_MAJOR, "minor": EVENT_MINOR, "startTime": start_time, "endTime": end_time}}
 
 
 def _fetch_events(device, from_datetime, to_datetime):
@@ -142,15 +114,9 @@ def _fetch_events(device, from_datetime, to_datetime):
     search_id = f"erpnext-{frappe.generate_hash(length=12)}"
 
     while True:
-        response = _post_json(
-            device,
-            "/ISAPI/AccessControl/AcsEvent?format=json",
-            _event_payload(start, end, position, search_id),
-            timeout=90,
-        )
+        response = _post_json(device, "/ISAPI/AccessControl/AcsEvent?format=json", _event_payload(start, end, position, search_id), timeout=90)
         if response.status_code != 200:
             raise RuntimeError(f"Hikvision HTTP {response.status_code}: {response.text[:2000]}")
-
         data = response.json().get("AcsEvent", {})
         page = data.get("InfoList") or []
         events.extend(page)
@@ -183,15 +149,7 @@ def _parse_event_time(value, timezone_name):
 
 
 def _group_events(events, duplicate_seconds):
-    ordered = sorted(
-        events,
-        key=lambda e: (
-            str(e.get("employeeNoString") or ""),
-            str(e.get("device_serial") or ""),
-            e.get("event_dt"),
-            int(e.get("serialNo") or 0),
-        ),
-    )
+    ordered = sorted(events, key=lambda e: (str(e.get("employeeNoString") or ""), str(e.get("device_serial") or ""), e.get("event_dt"), int(e.get("serialNo") or 0)))
     result = []
     previous = {}
     for event in ordered:
@@ -207,11 +165,9 @@ def _group_events(events, duplicate_seconds):
 
 
 def _find_employee(employee_no):
-    return frappe.db.get_value(
-        "Employee",
-        {"attendance_device_id": str(employee_no).strip(), "status": "Active"},
-        "name",
-    ) if employee_no else None
+    if not employee_no:
+        return None
+    return frappe.db.get_value("Employee", {"attendance_device_id": str(employee_no).strip(), "status": "Active"}, "name")
 
 
 def _event_key(device, event):
@@ -229,13 +185,7 @@ def _has_event_key(event_key):
 
 
 def _previous_log_type(employee, event_dt):
-    rows = frappe.get_all(
-        "Employee Checkin",
-        filters={"employee": employee, "time": ["<", event_dt]},
-        fields=["log_type"],
-        order_by="time desc",
-        limit=1,
-    )
+    rows = frappe.get_all("Employee Checkin", filters={"employee": employee, "time": ["<", event_dt]}, fields=["log_type"], order_by="time desc", limit=1)
     return "IN" if not rows or rows[0].log_type == "OUT" else "OUT"
 
 
@@ -244,15 +194,12 @@ def _create_checkin(device, event):
     employee = _find_employee(employee_no)
     if not employee:
         return "unmatched"
-
     key = _event_key(device, event)
     if _has_event_key(key):
         return "duplicate"
-
     meta = frappe.get_meta("Employee Checkin")
-    if meta.has_field("latitude") and meta.has_field("longitude"):
-        if device.latitude is None or device.longitude is None:
-            return "missing_location"
+    if meta.has_field("latitude") and meta.has_field("longitude") and (device.latitude is None or device.longitude is None):
+        return "missing_location"
 
     checkin = frappe.new_doc("Employee Checkin")
     checkin.employee = employee
@@ -273,7 +220,6 @@ def sync_device(device_name, from_datetime, to_datetime):
     device = _get_device(device_name)
     if not device.enabled:
         return {"status": "error", "message": "Device is disabled"}
-
     try:
         raw_events = _fetch_events(device, from_datetime, to_datetime)
         timezone_name = device.timezone or DEFAULT_TIMEZONE
@@ -284,13 +230,11 @@ def sync_device(device_name, from_datetime, to_datetime):
             event_dt = _parse_event_time(raw.get("time"), timezone_name)
             if event_dt and raw.get("employeeNoString"):
                 normalized.append({**raw, "event_dt": event_dt, "device_serial": device.serial_number or device.device_id or device.ip})
-
         duplicate_seconds = max(int(settings.duplicate_seconds or DEFAULT_DUPLICATE_SECONDS), 0)
         normalized = _group_events(normalized, duplicate_seconds)
         counts = {"created": 0, "duplicate": 0, "unmatched": 0, "missing_location": 0}
         for event in normalized:
             counts[_create_checkin(device, event)] += 1
-
         message = f"Fetched {len(raw_events)} events; processed {len(normalized)} successful authentication events"
         frappe.db.set_value("Biometric Device", device.name, {"last_sync": frappe.utils.now_datetime(), "last_sync_status": message}, update_modified=False)
         frappe.db.commit()
