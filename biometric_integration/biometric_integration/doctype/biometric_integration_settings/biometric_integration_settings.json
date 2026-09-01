@@ -1,0 +1,18 @@
+{
+  "doctype": "DocType",
+  "name": "Biometric Integration Settings",
+  "module": "Biometric Integration",
+  "issingle": 1,
+  "fields": [
+    {"fieldname":"enabled","fieldtype":"Check","label":"Enable Biometric Integration","default":"1"},
+    {"fieldname":"devices","fieldtype":"Table","label":"Hikvision Devices","options":"Biometric Device"},
+    {"fieldname":"sync_section","fieldtype":"Section Break","label":"Synchronization"},
+    {"fieldname":"duplicate_seconds","fieldtype":"Int","label":"Duplicate Grouping Window (seconds)","default":"30"},
+    {"fieldname":"scheduler_enabled","fieldtype":"Check","label":"Enable Automatic Synchronization","default":"0"},
+    {"fieldname":"scheduler_window_minutes","fieldtype":"Int","label":"Automatic Sync Window (minutes)","default":"15"},
+    {"fieldname":"manual_section","fieldtype":"Section Break","label":"Manual Import"}
+  ],
+  "permissions": [
+    {"role":"System Manager","read":1,"write":1}
+  ]
+}
