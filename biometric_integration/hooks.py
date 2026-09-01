@@ -13,4 +13,6 @@ scheduler_events = {
     }
 }
 
-fixtures = []
+after_migrate = [
+    "biometric_integration.install.ensure_custom_fields"
+]
