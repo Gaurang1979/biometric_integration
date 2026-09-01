@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="620" viewBox="0 0 1000 620">
+<rect width="1000" height="620" fill="white"/>
+<text x="500" y="55" text-anchor="middle" font-family="Arial,sans-serif" font-size="30" font-weight="bold">Hikvision → ERPNext Attendance Flow</text>
+<g font-family="Arial,sans-serif" font-size="22" text-anchor="middle">
+<rect x="90" y="120" width="260" height="100" rx="18" fill="#f4f4f4" stroke="#333" stroke-width="2"/>
+<text x="220" y="162">Hikvision Device(s)</text><text x="220" y="195" font-size="17">ISAPI / HTTP(S)</text>
+<rect x="370" y="120" width="260" height="100" rx="18" fill="#f4f4f4" stroke="#333" stroke-width="2"/>
+<text x="500" y="162">Biometric Integration</text><text x="500" y="195" font-size="17">Device + event processing</text>
+<rect x="650" y="120" width="260" height="100" rx="18" fill="#f4f4f4" stroke="#333" stroke-width="2"/>
+<text x="780" y="162">Employee</text><text x="780" y="195" font-size="17">Attendance Device ID</text>
+<path d="M350 170 H370 M630 170 H650" stroke="#333" stroke-width="4" marker-end="url(#a)"/>
+<rect x="220" y="340" width="260" height="100" rx="18" fill="#f4f4f4" stroke="#333" stroke-width="2"/>
+<text x="350" y="382">Employee Checkin</text><text x="350" y="415" font-size="17">IN / OUT + time + device</text>
+<rect x="520" y="340" width="260" height="100" rx="18" fill="#f4f4f4" stroke="#333" stroke-width="2"/>
+<text x="650" y="382">ERPNext HRMS</text><text x="650" y="415" font-size="17">Attendance processing</text>
+<path d="M780 220 V285 H350 V340" fill="none" stroke="#333" stroke-width="4" marker-end="url(#a)"/>
+<path d="M480 390 H520" stroke="#333" stroke-width="4" marker-end="url(#a)"/>
+</g>
+<defs><marker id="a" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#333"/></marker></defs>
+<text x="500" y="520" text-anchor="middle" font-family="Arial,sans-serif" font-size="18">Employee names are not the primary mapping key.</text>
+<text x="500" y="550" text-anchor="middle" font-family="Arial,sans-serif" font-size="18">The biometric employee identifier is matched to Attendance Device ID.</text>
+</svg>
