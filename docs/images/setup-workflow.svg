@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="720" viewBox="0 0 1000 720">
+<rect width="1000" height="720" fill="white"/>
+<text x="500" y="50" text-anchor="middle" font-family="Arial,sans-serif" font-size="30" font-weight="bold">Administrator Setup Workflow</text>
+<g font-family="Arial,sans-serif" font-size="20" text-anchor="middle">
+<rect x="330" y="90" width="340" height="70" rx="16" fill="#f4f4f4" stroke="#333" stroke-width="2"/><text x="500" y="134">1. Install application</text>
+<rect x="330" y="190" width="340" height="70" rx="16" fill="#f4f4f4" stroke="#333" stroke-width="2"/><text x="500" y="234">2. Run ERPNext migration</text>
+<rect x="330" y="290" width="340" height="70" rx="16" fill="#f4f4f4" stroke="#333" stroke-width="2"/><text x="500" y="334">3. Configure device</text>
+<rect x="330" y="390" width="340" height="70" rx="16" fill="#f4f4f4" stroke="#333" stroke-width="2"/><text x="500" y="434">4. Configure employee IDs</text>
+<rect x="330" y="490" width="340" height="70" rx="16" fill="#f4f4f4" stroke="#333" stroke-width="2"/><text x="500" y="534">5. Test connection + manual import</text>
+<rect x="330" y="590" width="340" height="70" rx="16" fill="#f4f4f4" stroke="#333" stroke-width="2"/><text x="500" y="634">6. Verify Checkin, then enable scheduler</text>
+<g stroke="#333" stroke-width="4"><path d="M500 160 V190"/><path d="M500 260 V290"/><path d="M500 360 V390"/><path d="M500 460 V490"/><path d="M500 560 V590"/></g>
+</g>
+</svg>
