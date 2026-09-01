@@ -1,4 +1,3 @@
-import json
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import xml.etree.ElementTree as ET
@@ -27,8 +26,12 @@ def _get_device(device_name):
     frappe.throw(f"Biometric Device {device_name} was not found in Biometric Integration Settings")
 
 
+def _password(device):
+    return frappe.utils.password.get_decrypted_password("Biometric Device", device.name, "password")
+
+
 def _auth(device):
-    return HTTPDigestAuth(device.username, device.get_password("password"))
+    return HTTPDigestAuth(device.username, _password(device))
 
 
 def _base_url(device):
@@ -39,9 +42,8 @@ def _base_url(device):
 
 
 def _post_json(device, path, payload, timeout=60):
-    url = f"{_base_url(device)}{path}"
     return requests.post(
-        url,
+        f"{_base_url(device)}{path}",
         auth=_auth(device),
         headers={"Content-Type": "application/json"},
         json=payload,
@@ -83,8 +85,7 @@ def test_device(device_name):
         response = _get(device, "/ISAPI/System/deviceInfo")
         if response.status_code != 200:
             return {"status": "error", "http_status": response.status_code, "message": response.text[:1000]}
-        info = _parse_device_info(response.content)
-        return {"status": "success", "device": info}
+        return {"status": "success", "device": _parse_device_info(response.content)}
     except Exception as exc:
         frappe.log_error(frappe.get_traceback(), "Hikvision device test failed")
         return {"status": "error", "message": str(exc)}
@@ -93,13 +94,13 @@ def test_device(device_name):
 @frappe.whitelist()
 def test_all_devices():
     settings = _settings()
-    return {
-        "devices": [
-            {"name": row.name, "device_name": row.device_name, **test_device(row.name)}
-            for row in (settings.devices or [])
-            if row.enabled
-        ]
-    }
+    results = []
+    for row in settings.devices or []:
+        if not row.enabled:
+            continue
+        result = test_device(row.name)
+        results.append({"name": row.name, "device_name": row.device_name, **result})
+    return {"devices": results}
 
 
 @frappe.whitelist()
@@ -110,14 +111,11 @@ def fetch_device_info(device_name):
         return result
 
     info = result["device"]
-    parent = _settings()
-    for row in parent.devices or []:
-        if row.name == device.name:
-            for fieldname in ("device_id", "model", "serial_number", "mac_address"):
-                row.db_set(fieldname, info.get(fieldname, ""), update_modified=False)
-            if info.get("device_name") and not row.device_name:
-                row.db_set("device_name", info["device_name"], update_modified=False)
-            break
+    for fieldname in ("device_id", "model", "serial_number", "mac_address"):
+        frappe.db.set_value("Biometric Device", device.name, fieldname, info.get(fieldname, ""), update_modified=False)
+    if info.get("device_name") and not device.device_name:
+        frappe.db.set_value("Biometric Device", device.name, "device_name", info["device_name"], update_modified=False)
+    frappe.db.commit()
     return {"status": "success", "device": info}
 
 
@@ -136,8 +134,9 @@ def _event_payload(start_time, end_time, position, search_id):
 
 
 def _fetch_events(device, from_datetime, to_datetime):
-    payload_start = _iso_with_offset(from_datetime, device.timezone or DEFAULT_TIMEZONE)
-    payload_end = _iso_with_offset(to_datetime, device.timezone or DEFAULT_TIMEZONE)
+    timezone_name = device.timezone or DEFAULT_TIMEZONE
+    start = _iso_with_offset(from_datetime, timezone_name)
+    end = _iso_with_offset(to_datetime, timezone_name)
     events = []
     position = 0
     search_id = f"erpnext-{frappe.generate_hash(length=12)}"
@@ -146,7 +145,7 @@ def _fetch_events(device, from_datetime, to_datetime):
         response = _post_json(
             device,
             "/ISAPI/AccessControl/AcsEvent?format=json",
-            _event_payload(payload_start, payload_end, position, search_id),
+            _event_payload(start, end, position, search_id),
             timeout=90,
         )
         if response.status_code != 200:
@@ -156,14 +155,11 @@ def _fetch_events(device, from_datetime, to_datetime):
         page = data.get("InfoList") or []
         events.extend(page)
         total = int(data.get("totalMatches") or len(events))
-
         if not page or len(events) >= total or data.get("responseStatusStrg") != "MORE":
             break
         position += len(page)
-
         if position > 10000:
             raise RuntimeError("Hikvision event pagination exceeded 10,000 records; narrow the date range")
-
     return events
 
 
@@ -211,13 +207,11 @@ def _group_events(events, duplicate_seconds):
 
 
 def _find_employee(employee_no):
-    if not employee_no:
-        return None
     return frappe.db.get_value(
         "Employee",
-        {"attendance_device_id": str(employee_no), "status": "Active"},
+        {"attendance_device_id": str(employee_no).strip(), "status": "Active"},
         "name",
-    )
+    ) if employee_no else None
 
 
 def _event_key(device, event):
@@ -229,23 +223,20 @@ def _event_key(device, event):
 
 
 def _has_event_key(event_key):
-    meta = frappe.get_meta("Employee Checkin")
-    if meta.has_field("hikcentral_event_key"):
+    if frappe.get_meta("Employee Checkin").has_field("hikcentral_event_key"):
         return frappe.db.exists("Employee Checkin", {"hikcentral_event_key": event_key})
-    return None
+    return False
 
 
 def _previous_log_type(employee, event_dt):
     rows = frappe.get_all(
         "Employee Checkin",
         filters={"employee": employee, "time": ["<", event_dt]},
-        fields=["log_type", "time"],
+        fields=["log_type"],
         order_by="time desc",
         limit=1,
     )
-    if not rows:
-        return "IN"
-    return "OUT" if rows[0].log_type == "IN" else "IN"
+    return "IN" if not rows or rows[0].log_type == "OUT" else "OUT"
 
 
 def _create_checkin(device, event):
@@ -258,21 +249,21 @@ def _create_checkin(device, event):
     if _has_event_key(key):
         return "duplicate"
 
+    meta = frappe.get_meta("Employee Checkin")
+    if meta.has_field("latitude") and meta.has_field("longitude"):
+        if device.latitude is None or device.longitude is None:
+            return "missing_location"
+
     checkin = frappe.new_doc("Employee Checkin")
     checkin.employee = employee
     checkin.time = event["event_dt"].astimezone(ZoneInfo(device.timezone or DEFAULT_TIMEZONE)).replace(tzinfo=None)
     checkin.log_type = _previous_log_type(employee, checkin.time)
     checkin.device_id = device.serial_number or device.device_id or device.device_name or device.ip
-
-    meta = frappe.get_meta("Employee Checkin")
     if meta.has_field("hikcentral_event_key"):
         checkin.hikcentral_event_key = key
     if meta.has_field("latitude") and meta.has_field("longitude"):
-        if device.latitude is None or device.longitude is None:
-            return "missing_location"
         checkin.latitude = device.latitude
         checkin.longitude = device.longitude
-
     checkin.insert(ignore_permissions=True)
     return "created"
 
@@ -285,35 +276,27 @@ def sync_device(device_name, from_datetime, to_datetime):
 
     try:
         raw_events = _fetch_events(device, from_datetime, to_datetime)
-        normalized = []
         timezone_name = device.timezone or DEFAULT_TIMEZONE
+        normalized = []
         for raw in raw_events:
             if int(raw.get("major") or 0) != EVENT_MAJOR or int(raw.get("minor") or 0) != EVENT_MINOR:
                 continue
             event_dt = _parse_event_time(raw.get("time"), timezone_name)
-            if not event_dt or not raw.get("employeeNoString"):
-                continue
-            normalized.append({**raw, "event_dt": event_dt, "device_serial": device.serial_number or device.device_id or device.ip})
+            if event_dt and raw.get("employeeNoString"):
+                normalized.append({**raw, "event_dt": event_dt, "device_serial": device.serial_number or device.device_id or device.ip})
 
         duplicate_seconds = max(int(settings.duplicate_seconds or DEFAULT_DUPLICATE_SECONDS), 0)
         normalized = _group_events(normalized, duplicate_seconds)
-
         counts = {"created": 0, "duplicate": 0, "unmatched": 0, "missing_location": 0}
         for event in normalized:
             counts[_create_checkin(device, event)] += 1
 
         message = f"Fetched {len(raw_events)} events; processed {len(normalized)} successful authentication events"
-        frappe.db.set_value("Biometric Device", device.name, {
-            "last_sync": frappe.utils.now_datetime(),
-            "last_sync_status": message,
-        }, update_modified=False)
+        frappe.db.set_value("Biometric Device", device.name, {"last_sync": frappe.utils.now_datetime(), "last_sync_status": message}, update_modified=False)
         frappe.db.commit()
         return {"status": "success", "device": device.device_name, "fetched": len(raw_events), "processed": len(normalized), **counts}
     except Exception as exc:
-        frappe.db.set_value("Biometric Device", device.name, {
-            "last_sync": frappe.utils.now_datetime(),
-            "last_sync_status": f"ERROR: {exc}",
-        }, update_modified=False)
+        frappe.db.set_value("Biometric Device", device.name, {"last_sync": frappe.utils.now_datetime(), "last_sync_status": f"ERROR: {exc}"}, update_modified=False)
         frappe.db.commit()
         frappe.log_error(frappe.get_traceback(), f"Hikvision sync failed: {device.device_name}")
         return {"status": "error", "device": device.device_name, "message": str(exc)}
@@ -323,12 +306,7 @@ def sync_all_devices():
     settings = _settings()
     if not settings.enabled or not settings.scheduler_enabled:
         return []
-
     minutes = max(int(settings.scheduler_window_minutes or 15), 1)
     end = frappe.utils.now_datetime()
     start = end - timedelta(minutes=minutes)
-    results = []
-    for device in settings.devices or []:
-        if device.enabled:
-            results.append(sync_device(device.name, start, end))
-    return results
+    return [sync_device(row.name, start, end) for row in settings.devices or [] if row.enabled]
