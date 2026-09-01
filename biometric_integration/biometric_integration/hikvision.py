@@ -36,10 +36,14 @@ def _auth(device):
 
 
 def _base_url(device):
+    protocol = (device.protocol or "HTTP").strip().lower()
+    if protocol not in ("http", "https"):
+        protocol = "http"
     host = (device.ip or "").strip()
     if host.startswith("http://") or host.startswith("https://"):
         return host.rstrip("/")
-    return f"http://{host}"
+    port = int(device.port or (443 if protocol == "https" else 80))
+    return f"{protocol}://{host}:{port}"
 
 
 def _post_json(device, path, payload, timeout=60):
