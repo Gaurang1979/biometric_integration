@@ -8,17 +8,18 @@ frappe.ui.form.on("Biometric Integration Settings", {
                 freeze: true,
                 freeze_message: __("Testing Hikvision devices...")
             }).then(r => {
-                if (r.message) {
-                    frappe.msgprint({title: __("Device Test"), message: `<pre>${frappe.utils.escape_html(JSON.stringify(r.message, null, 2))}</pre>`});
-                }
+                if (r.message) frappe.msgprint({title: __("Device Test"), message: `<pre>${frappe.utils.escape_html(JSON.stringify(r.message, null, 2))}</pre>`});
             });
         });
 
+        const devices = (frm.doc.devices || []).filter(row => row.enabled);
         frm.add_custom_button(__("Import Attendance"), () => {
+            if (!devices.length) return frappe.msgprint(__("Add at least one enabled Hikvision device first."));
+            const options = devices.map(row => ({label: row.device_name || row.ip, value: row.name}));
             const d = new frappe.ui.Dialog({
                 title: __("Import Hikvision Attendance"),
                 fields: [
-                    {fieldname: "device", label: __("Device"), fieldtype: "Link", options: "Biometric Device", reqd: 1},
+                    {fieldname: "device", label: __("Device"), fieldtype: "Select", options, reqd: 1},
                     {fieldname: "from_datetime", label: __("From"), fieldtype: "Datetime", reqd: 1, default: frappe.datetime.add_days(frappe.datetime.now_datetime(), -1)},
                     {fieldname: "to_datetime", label: __("To"), fieldtype: "Datetime", reqd: 1, default: frappe.datetime.now_datetime()}
                 ],
@@ -39,8 +40,8 @@ frappe.ui.form.on("Biometric Integration Settings", {
         });
 
         frm.add_custom_button(__("Fetch Device Info"), () => {
-            const row = frm.doc.devices && frm.doc.devices[0];
-            if (!row) return frappe.msgprint(__("Add a Hikvision device first."));
+            if (!devices.length) return frappe.msgprint(__("Add an enabled Hikvision device first."));
+            const row = devices[0];
             frappe.call({
                 method: "biometric_integration.biometric_integration.doctype.biometric_integration_settings.biometric_integration_settings.fetch_device_info",
                 args: {device_name: row.name},
@@ -48,11 +49,5 @@ frappe.ui.form.on("Biometric Integration Settings", {
                 freeze_message: __("Reading device information...")
             }).then(() => frm.reload_doc());
         });
-    }
-});
-
-frappe.ui.form.on("Biometric Device", {
-    form_render(frm, cdt, cdn) {
-        // Child-row editing is intentionally simple; connection tests are available from the parent.
     }
 });
