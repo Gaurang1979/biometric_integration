@@ -2,6 +2,18 @@ frappe.ui.form.on("Biometric Integration Settings", {
     refresh(frm) {
         if (frm.is_new()) return;
 
+        // Device Name is metadata reported by the physical Hikvision terminal.
+        // IP, port, username and password remain editable because they are
+        // required to connect to the terminal.
+        if (frm.fields_dict.devices && frm.fields_dict.devices.grid) {
+            frm.fields_dict.devices.grid.update_docfield_property(
+                "device_name",
+                "read_only",
+                1
+            );
+            frm.refresh_field("devices");
+        }
+
         frm.add_custom_button(__("Test All Devices"), () => {
             frappe.call({
                 method: "biometric_integration.biometric_integration.hikvision.test_all_devices",
