@@ -4,9 +4,9 @@
   "module": "Biometric Integration",
   "autoname": "hash",
   "fields": [
-    {"fieldname":"employee","fieldtype":"Link","label":"Employee","options":"Employee","reqd":1,"in_list_view":1},
-    {"fieldname":"employee_name","fieldtype":"Data","label":"Employee Name","read_only":1},
-    {"fieldname":"log_date","fieldtype":"Date","label":"Date","reqd":1,"in_list_view":1},
+    {"fieldname":"employee","fieldtype":"Link","label":"Employee","options":"Employee","reqd":1,"read_only":1,"in_list_view":1},
+    {"fieldname":"employee_name","fieldtype":"Data","label":"Employee Name","read_only":1,"in_list_view":1},
+    {"fieldname":"log_date","fieldtype":"Date","label":"Date","reqd":1,"read_only":1,"in_list_view":1},
     {"fieldname":"movement_entries","fieldtype":"Table","label":"Daily Movement Entries","options":"Daily Employee Movement Entry"}
   ],
   "permissions": [
