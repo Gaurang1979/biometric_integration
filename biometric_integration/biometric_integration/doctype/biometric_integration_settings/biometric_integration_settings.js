@@ -27,7 +27,11 @@ frappe.ui.form.on("Biometric Integration Settings", {
                 primary_action(values) {
                     frappe.call({
                         method: "biometric_integration.biometric_integration.doctype.biometric_integration_settings.biometric_integration_settings.sync_attendance",
-                        args: values,
+                        args: {
+                            device_name: values.device,
+                            from_datetime: values.from_datetime,
+                            to_datetime: values.to_datetime
+                        },
                         freeze: true,
                         freeze_message: __("Fetching and creating Employee Checkins...")
                     }).then(r => {
@@ -39,15 +43,30 @@ frappe.ui.form.on("Biometric Integration Settings", {
             d.show();
         });
 
-        frm.add_custom_button(__("Fetch Device Info"), () => {
+        frm.add_custom_button(__("Fetch All Device Info"), () => {
             if (!devices.length) return frappe.msgprint(__("Add an enabled Hikvision device first."));
-            const row = devices[0];
             frappe.call({
-                method: "biometric_integration.biometric_integration.doctype.biometric_integration_settings.biometric_integration_settings.fetch_device_info",
-                args: {device_name: row.name},
+                method: "biometric_integration.biometric_integration.doctype.biometric_integration_settings.biometric_integration_settings.fetch_all_device_info",
                 freeze: true,
-                freeze_message: __("Reading device information...")
-            }).then(() => frm.reload_doc());
+                freeze_message: __("Reading information from all enabled devices...")
+            }).then(r => {
+                const result = r.message || {};
+                const rows = result.devices || [];
+                if (!rows.length) {
+                    frappe.msgprint(__("No enabled devices were found."));
+                    return;
+                }
+                const message = rows.map(row => {
+                    const label = frappe.utils.escape_html(row.device_name || row.name || "Device");
+                    const status = row.status === "success" ? "✓" : "✗";
+                    const detail = row.status === "success"
+                        ? `${frappe.utils.escape_html(row.model || "")} | ${frappe.utils.escape_html(row.serial_number || "")}`
+                        : frappe.utils.escape_html(row.message || "Unknown error");
+                    return `<div><b>${status} ${label}</b><br>${detail}</div>`;
+                }).join("<hr>");
+                frappe.msgprint({title: __("Device Information"), message});
+                frm.reload_doc();
+            });
         });
     }
 });
