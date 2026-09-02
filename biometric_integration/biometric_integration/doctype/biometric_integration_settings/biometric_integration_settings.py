@@ -19,6 +19,45 @@ def fetch_device_info(device_name):
 
 
 @frappe.whitelist()
+def fetch_all_device_info():
+    """Fetch and save Hikvision information for every enabled device."""
+    settings = frappe.get_single("Biometric Integration Settings")
+    results = []
+
+    from biometric_integration.biometric_integration.hikvision import fetch_device_info as _fetch
+
+    for row in settings.devices or []:
+        if not row.enabled:
+            continue
+
+        result = _fetch(row.name)
+        item = {
+            "name": row.name,
+            "device_name": row.device_name or row.ip,
+            "ip": row.ip,
+            "status": result.get("status"),
+        }
+
+        if result.get("status") == "success":
+            info = result.get("device") or {}
+            item.update({
+                "device_name": info.get("device_name") or row.device_name or row.ip,
+                "device_id": info.get("device_id", ""),
+                "model": info.get("model", ""),
+                "serial_number": info.get("serial_number", ""),
+                "mac_address": info.get("mac_address", ""),
+            })
+        else:
+            item["message"] = result.get("message") or "Unable to fetch device information"
+            if result.get("http_status"):
+                item["http_status"] = result.get("http_status")
+
+        results.append(item)
+
+    return {"devices": results}
+
+
+@frappe.whitelist()
 def sync_attendance(device_name, from_datetime, to_datetime):
     from biometric_integration.biometric_integration.hikvision import sync_device
     return sync_device(device_name, from_datetime, to_datetime)
