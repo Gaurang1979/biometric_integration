@@ -19,8 +19,6 @@ def fetch_device_info(device_name):
     from biometric_integration.biometric_integration.hikvision import fetch_device_info as _fetch
     result = _fetch(device_name)
 
-    # Device name is authoritative from the physical Hikvision terminal.
-    # Never retain a manually entered/old name when the device reports a name.
     if result.get("status") == "success":
         info = result.get("device") or {}
         device_name_from_device = (info.get("device_name") or "").strip()
@@ -61,9 +59,6 @@ def fetch_all_device_info():
             if result.get("status") == "success":
                 info = result.get("device") or {}
                 device_name_from_device = (info.get("device_name") or "").strip()
-
-                # Always overwrite Device Name with the value reported by
-                # the physical Hikvision device.
                 if device_name_from_device:
                     frappe.db.set_value(
                         "Biometric Device",
@@ -107,7 +102,7 @@ def fetch_all_device_info():
 @frappe.whitelist()
 def sync_attendance(from_datetime, to_datetime):
     """Import attendance from every enabled Hikvision device."""
-    from biometric_integration.biometric_integration.hikvision import sync_all_devices
+    from biometric_integration.biometric_integration.attendance_sync import sync_all_devices
     return sync_all_devices(
         from_datetime=from_datetime,
         to_datetime=to_datetime,
@@ -121,5 +116,5 @@ def scheduled_attendance_sync():
     if not settings.enabled or not settings.scheduler_enabled:
         return
 
-    from biometric_integration.biometric_integration.hikvision import sync_all_devices
+    from biometric_integration.biometric_integration.attendance_sync import sync_all_devices
     return sync_all_devices(require_scheduler=True)
