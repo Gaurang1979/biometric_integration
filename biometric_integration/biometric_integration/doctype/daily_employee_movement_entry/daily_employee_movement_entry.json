@@ -13,7 +13,7 @@
     {"fieldname":"authentication_result","fieldtype":"Data","label":"Authentication Result","read_only":1},
     {"fieldname":"card_no","fieldtype":"Data","label":"Card No","read_only":1},
     {"fieldname":"direction","fieldtype":"Select","label":"Movement","options":"IN\nOUT\nLOG","read_only":1,"in_list_view":1},
-    {"fieldname":"event_key","fieldtype":"Data","label":"Hikvision Event Key","read_only":1,"hidden":1},
+    {"fieldname":"event_key","fieldtype":"Data","label":"Hikvision Event Key","read_only":1,"hidden":1,"unique":1},
     {"fieldname":"session_key","fieldtype":"Data","label":"Session Key","read_only":1,"hidden":1},
     {"fieldname":"employee_checkin","fieldtype":"Link","label":"Employee Checkin","options":"Employee Checkin","read_only":1,"in_list_view":1}
   ],
