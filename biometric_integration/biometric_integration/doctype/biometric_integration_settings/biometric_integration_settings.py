@@ -15,9 +15,26 @@ def test_device(device_name):
 
 @frappe.whitelist()
 def fetch_device_info(device_name):
-    """Fetch information from one specific Hikvision device."""
+    """Fetch information from one specific Hikvision device and save it."""
     from biometric_integration.biometric_integration.hikvision import fetch_device_info as _fetch
-    return _fetch(device_name)
+    result = _fetch(device_name)
+
+    # Device name is authoritative from the physical Hikvision terminal.
+    # Never retain a manually entered/old name when the device reports a name.
+    if result.get("status") == "success":
+        info = result.get("device") or {}
+        device_name_from_device = (info.get("device_name") or "").strip()
+        if device_name_from_device:
+            frappe.db.set_value(
+                "Biometric Device",
+                device_name,
+                "device_name",
+                device_name_from_device,
+                update_modified=False,
+            )
+            frappe.db.commit()
+
+    return result
 
 
 @frappe.whitelist()
@@ -43,8 +60,21 @@ def fetch_all_device_info():
 
             if result.get("status") == "success":
                 info = result.get("device") or {}
+                device_name_from_device = (info.get("device_name") or "").strip()
+
+                # Always overwrite Device Name with the value reported by
+                # the physical Hikvision device.
+                if device_name_from_device:
+                    frappe.db.set_value(
+                        "Biometric Device",
+                        row.name,
+                        "device_name",
+                        device_name_from_device,
+                        update_modified=False,
+                    )
+
                 item.update({
-                    "device_name": info.get("device_name") or row.device_name or row.ip,
+                    "device_name": device_name_from_device or row.device_name or row.ip,
                     "device_id": info.get("device_id", ""),
                     "model": info.get("model", ""),
                     "serial_number": info.get("serial_number", ""),
@@ -70,6 +100,7 @@ def fetch_all_device_info():
 
         results.append(item)
 
+    frappe.db.commit()
     return {"devices": results}
 
 
