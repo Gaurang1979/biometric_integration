@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 from hashlib import sha1
 from zoneinfo import ZoneInfo
 
@@ -21,10 +21,7 @@ MOVEMENT_ENTRY_DOCTYPE = "Daily Employee Movement Entry"
 
 
 def _as_local_naive(event_dt, timezone_name):
-    return (
-        event_dt.astimezone(ZoneInfo(timezone_name))
-        .replace(tzinfo=None)
-    )
+    return event_dt.astimezone(ZoneInfo(timezone_name)).replace(tzinfo=None)
 
 
 def _day_from_event(event_dt, timezone_name):
@@ -37,9 +34,7 @@ def _stable_name(employee, log_date):
 
 
 def _stable_session_key(employee, log_date, first_event_key):
-    digest = sha1(
-        f"{employee}|{log_date}|{first_event_key}".encode()
-    ).hexdigest()[:24]
+    digest = sha1(f"{employee}|{log_date}|{first_event_key}".encode()).hexdigest()[:24]
     return f"HIKSESSION-{digest}"
 
 
@@ -67,10 +62,7 @@ def _get_or_create_daily_log(employee, log_date):
 
 def _append_event(log, device, event):
     event_key = event["event_key"]
-    if frappe.db.exists(
-        MOVEMENT_ENTRY_DOCTYPE,
-        {"event_key": event_key},
-    ):
+    if frappe.db.exists(MOVEMENT_ENTRY_DOCTYPE, {"event_key": event_key}):
         return False
 
     timezone_name = device.timezone or DEFAULT_TIMEZONE
@@ -99,11 +91,12 @@ def _append_event(log, device, event):
 
 
 def _load_events_for_log(log):
-    rows = frappe.get_all(
+    return frappe.get_all(
         MOVEMENT_ENTRY_DOCTYPE,
         filters={"parent": log.name, "parenttype": MOVEMENT_DOCTYPE},
         fields=[
             "name",
+            "parent",
             "event_time",
             "device_name",
             "device_serial_number",
@@ -119,7 +112,6 @@ def _load_events_for_log(log):
         order_by="event_time asc, idx asc",
         limit_page_length=0,
     )
-    return rows
 
 
 def _device_identity(row):
@@ -133,10 +125,7 @@ def _sessionize(rows):
     for row in rows:
         identity = _device_identity(row)
         if current is None or identity != current["device_identity"]:
-            current = {
-                "device_identity": identity,
-                "rows": [],
-            }
+            current = {"device_identity": identity, "rows": []}
             sessions.append(current)
         current["rows"].append(row)
 
@@ -152,35 +141,10 @@ def _find_checkin_by_session(session_key):
     )
 
 
-def _delete_checkin(checkin_name):
-    if not checkin_name:
-        return
-    try:
-        frappe.delete_doc(
-            "Employee Checkin",
-            checkin_name,
-            ignore_permissions=True,
-            force=True,
-        )
-    except Exception:
-        frappe.log_error(
-            frappe.get_traceback(),
-            f"Unable to remove obsolete biometric checkin {checkin_name}",
-        )
-
-
-def _create_or_update_checkin(
-    employee,
-    log_date,
-    row,
-    log_type,
-    session_key,
-):
+def _create_or_update_checkin(employee, row, log_type, session_key):
     meta = frappe.get_meta("Employee Checkin")
     if not meta.has_field("biometric_session_key"):
-        raise RuntimeError(
-            "Employee Checkin biometric_session_key field is missing. Run bench migrate."
-        )
+        raise RuntimeError("Employee Checkin biometric_session_key is missing. Run bench migrate.")
 
     full_session_key = f"{session_key}:{log_type}"
     existing = _find_checkin_by_session(full_session_key)
@@ -188,9 +152,8 @@ def _create_or_update_checkin(
     if existing:
         checkin = frappe.get_doc("Employee Checkin", existing.name)
         changed = False
-        target_time = row.event_time
-        if checkin.time != target_time:
-            checkin.time = target_time
+        if checkin.time != row.event_time:
+            checkin.time = row.event_time
             changed = True
         if checkin.log_type != log_type:
             checkin.log_type = log_type
@@ -221,22 +184,6 @@ def _create_or_update_checkin(
     if meta.has_field("biometric_movement_log"):
         checkin.biometric_movement_log = row.parent
 
-    if meta.has_field("latitude") or meta.has_field("longitude"):
-        # The movement entry does not need coordinates; Employee Checkin keeps
-        # the device coordinates when the custom fields exist.
-        device_name = row.device_name
-        coords = frappe.db.get_value(
-            "Biometric Device",
-            {"device_name": device_name},
-            ["latitude", "longitude"],
-            as_dict=True,
-        )
-        if coords:
-            if meta.has_field("latitude"):
-                checkin.latitude = coords.latitude
-            if meta.has_field("longitude"):
-                checkin.longitude = coords.longitude
-
     checkin.insert(ignore_permissions=True)
     return checkin.name
 
@@ -252,11 +199,7 @@ def _reconcile_daily_log(log):
     for session in sessions:
         first = session["rows"][0]
         last = session["rows"][-1]
-        session_key = _stable_session_key(
-            log.employee,
-            log.log_date,
-            first.event_key,
-        )
+        session_key = _stable_session_key(log.employee, log.log_date, first.event_key)
 
         for index, row in enumerate(session["rows"]):
             direction = "LOG"
@@ -268,42 +211,23 @@ def _reconcile_daily_log(log):
             frappe.db.set_value(
                 MOVEMENT_ENTRY_DOCTYPE,
                 row.name,
-                {
-                    "direction": direction,
-                    "session_key": session_key,
-                },
+                {"direction": direction, "session_key": session_key},
                 update_modified=False,
             )
 
-        in_checkin = _create_or_update_checkin(
-            log.employee,
-            log.log_date,
-            first,
-            "IN",
-            session_key,
-        )
+        in_checkin = _create_or_update_checkin(log.employee, first, "IN", session_key)
         checkins += 1
 
-        first_entry = session["rows"][0]
-        last_entry = session["rows"][-1]
-
+        out_checkin = None
         if len(session["rows"]) > 1:
-            out_checkin = _create_or_update_checkin(
-                log.employee,
-                log.log_date,
-                last_entry,
-                "OUT",
-                session_key,
-            )
+            out_checkin = _create_or_update_checkin(log.employee, last, "OUT", session_key)
             checkins += 1
-        else:
-            out_checkin = None
 
         for row in session["rows"]:
             checkin_name = None
-            if row.name == first_entry.name:
+            if row.name == first.name:
                 checkin_name = in_checkin
-            elif row.name == last_entry.name and out_checkin:
+            elif row.name == last.name and out_checkin:
                 checkin_name = out_checkin
 
             frappe.db.set_value(
@@ -314,7 +238,6 @@ def _reconcile_daily_log(log):
                 update_modified=False,
             )
 
-    log.save(ignore_permissions=True)
     return {"sessions": len(sessions), "checkins": checkins}
 
 
@@ -323,9 +246,7 @@ def _normalize_device_events(device, raw_events, duplicate_seconds):
     normalized = []
 
     for raw in raw_events:
-        if int(raw.get("major") or 0) != 5:
-            continue
-        if int(raw.get("minor") or 0) != 75:
+        if int(raw.get("major") or 0) != 5 or int(raw.get("minor") or 0) != 75:
             continue
 
         event_dt = _parse_event_time(raw.get("time"), timezone_name)
@@ -335,97 +256,46 @@ def _normalize_device_events(device, raw_events, duplicate_seconds):
 
         employee = frappe.db.get_value(
             "Employee",
-            {
-                "attendance_device_id": employee_no,
-                "status": "Active",
-            },
+            {"attendance_device_id": employee_no, "status": "Active"},
             "name",
         )
         if not employee:
             continue
 
-        normalized.append(
-            {
-                **raw,
-                "event_dt": event_dt,
-                "employee": employee,
-                "event_key": _event_key(device, raw),
-                "device_serial": device.serial_number or device.device_id or device.ip,
-            }
-        )
+        normalized.append({
+            **raw,
+            "event_dt": event_dt,
+            "employee": employee,
+            "event_key": _event_key(device, raw),
+            "device_serial": device.serial_number or device.device_id or device.ip,
+        })
 
-    normalized = _group_events(normalized, duplicate_seconds)
-    return normalized
+    return _group_events(normalized, duplicate_seconds)
 
 
-def _default_scheduler_range(settings):
-    now = frappe.utils.now_datetime()
-    minutes = max(int(settings.scheduler_window_minutes or 15), 1)
-    start = now - timedelta(minutes=minutes)
-
-    # Re-read the current day so the integration can correctly determine the
-    # employee's device sessions. This is intentionally broader than the
-    # scheduler window; duplicate event keys prevent repeated movement rows.
-    local_now = now.astimezone(ZoneInfo(DEFAULT_TIMEZONE))
-    day_start = local_now.replace(
-        hour=0,
-        minute=0,
-        second=0,
-        microsecond=0,
-    )
-    return day_start, max(start, day_start.replace(tzinfo=None)), now
+def _scheduler_start(to_datetime):
+    local_now = to_datetime.astimezone(ZoneInfo(DEFAULT_TIMEZONE))
+    return local_now.replace(hour=0, minute=0, second=0, microsecond=0).replace(tzinfo=None)
 
 
-def sync_all_devices(
-    from_datetime=None,
-    to_datetime=None,
-    require_scheduler=False,
-):
+def sync_all_devices(from_datetime=None, to_datetime=None, require_scheduler=False):
     settings = _settings()
 
     if not settings.enabled:
-        return {
-            "status": "error",
-            "message": "Biometric Integration is disabled.",
-            "devices": [],
-        }
+        return {"status": "error", "message": "Biometric Integration is disabled.", "devices": []}
 
     if require_scheduler and not settings.scheduler_enabled:
-        return {
-            "status": "skipped",
-            "message": "Scheduler is disabled.",
-            "devices": [],
-        }
+        return {"status": "skipped", "message": "Scheduler is disabled.", "devices": []}
 
     if from_datetime is None or to_datetime is None:
-        from_datetime = frappe.utils.now_datetime() - timedelta(
-            minutes=max(int(settings.scheduler_window_minutes or 15), 1)
-        )
         to_datetime = frappe.utils.now_datetime()
-
-        # The scheduler needs the day's history to recognize location changes
-        # and to keep the latest event as the current OUT for an open session.
-        local_now = to_datetime.astimezone(ZoneInfo(DEFAULT_TIMEZONE))
-        from_datetime = local_now.replace(
-            hour=0,
-            minute=0,
-            second=0,
-            microsecond=0,
-        ).replace(tzinfo=None)
+        from_datetime = _scheduler_start(to_datetime)
 
     devices = _get_enabled_devices()
     if not devices:
-        return {
-            "status": "error",
-            "message": "No enabled Hikvision devices found.",
-            "devices": [],
-        }
+        return {"status": "error", "message": "No enabled Hikvision devices found.", "devices": []}
 
-    duplicate_seconds = max(
-        int(settings.duplicate_seconds or DEFAULT_DUPLICATE_SECONDS),
-        0,
-    )
-
+    duplicate_seconds = max(int(settings.duplicate_seconds or DEFAULT_DUPLICATE_SECONDS), 0)
     all_events = []
     results = []
     totals = {
@@ -441,12 +311,7 @@ def sync_all_devices(
     for device in devices:
         try:
             raw_events = _fetch_events(device, from_datetime, to_datetime)
-            normalized = _normalize_device_events(
-                device,
-                raw_events,
-                duplicate_seconds,
-            )
-
+            normalized = _normalize_device_events(device, raw_events, duplicate_seconds)
             all_events.extend(normalized)
             totals["fetched"] += len(raw_events)
             totals["processed"] += len(normalized)
@@ -456,10 +321,7 @@ def sync_all_devices(
                 device.name,
                 {
                     "last_sync": frappe.utils.now_datetime(),
-                    "last_sync_status": (
-                        f"Fetched {len(raw_events)}; processed {len(normalized)} "
-                        "successful employee events"
-                    ),
+                    "last_sync_status": f"Fetched {len(raw_events)}; processed {len(normalized)} employee events",
                 },
                 update_modified=False,
             )
@@ -485,39 +347,24 @@ def sync_all_devices(
                 "message": str(exc),
             })
 
+    device_map = {
+        (d.serial_number or d.device_id or d.ip): d
+        for d in devices
+    }
     affected = set()
+
     for event in all_events:
-        log_date = _day_from_event(
-            event["event_dt"],
-            next(
-                (
-                    d.timezone or DEFAULT_TIMEZONE
-                    for d in devices
-                    if (d.serial_number or d.device_id or d.ip) == event["device_serial"]
-                ),
-                DEFAULT_TIMEZONE,
-            ),
-        )
-        device = next(
-            (
-                d for d in devices
-                if (d.serial_number or d.device_id or d.ip) == event["device_serial"]
-            ),
-            None,
-        )
+        device = device_map.get(event["device_serial"])
         if not device:
             continue
 
+        log_date = _day_from_event(event["event_dt"], device.timezone or DEFAULT_TIMEZONE)
         log = _get_or_create_daily_log(event["employee"], log_date)
         if _append_event(log, device, event):
             totals["movement_created"] += 1
-            affected.add(log.name)
-        else:
-            affected.add(log.name)
         log.save(ignore_permissions=True)
+        affected.add(log.name)
 
-    # Reconcile every affected employee/day from the complete stored movement
-    # history, not just the current scheduler window.
     for log_name in affected:
         log = frappe.get_doc(MOVEMENT_DOCTYPE, log_name)
         result = _reconcile_daily_log(log)
@@ -531,8 +378,7 @@ def sync_all_devices(
         **totals,
         "devices": results,
         "message": (
-            f"Fetched {totals['fetched']} events; stored "
-            f"{totals['movement_created']} new movement events; "
-            f"reconciled {totals['sessions']} device sessions."
+            f"Fetched {totals['fetched']} events; stored {totals['movement_created']} "
+            f"new movement events; reconciled {totals['sessions']} device sessions."
         ),
     }
