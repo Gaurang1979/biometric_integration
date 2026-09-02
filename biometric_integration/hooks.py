@@ -8,7 +8,7 @@ app_license = "MIT"
 scheduler_events = {
     "cron": {
         "*/10 * * * *": [
-            "biometric_integration.biometric_integration.hikvision.sync_all_devices"
+            "biometric_integration.biometric_integration.doctype.biometric_integration_settings.biometric_integration_settings.scheduled_attendance_sync"
         ]
     }
 }
