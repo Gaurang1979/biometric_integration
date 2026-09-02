@@ -9,7 +9,6 @@ LEGACY_SETTINGS_FIELDS = (
 
 
 def _remove_custom_field(dt, fieldname):
-    """Remove an obsolete custom field if it exists."""
     custom_field = frappe.db.get_value(
         "Custom Field",
         {"dt": dt, "fieldname": fieldname},
@@ -24,15 +23,38 @@ def _remove_custom_field(dt, fieldname):
         )
 
 
+def _ensure_custom_field(fieldname, label, fieldtype="Data", options=None):
+    if frappe.db.exists(
+        "Custom Field",
+        {"dt": "Employee Checkin", "fieldname": fieldname},
+    ):
+        return
+
+    field = {
+        "doctype": "Custom Field",
+        "dt": "Employee Checkin",
+        "fieldname": fieldname,
+        "label": label,
+        "fieldtype": fieldtype,
+        "read_only": 1,
+        "hidden": 1,
+        "insert_after": "device_id",
+    }
+    if options:
+        field["options"] = options
+    frappe.get_doc(field).insert(ignore_permissions=True)
+
+
 def ensure_custom_fields():
     """Create current integration metadata and remove obsolete fields."""
     for fieldname in LEGACY_SETTINGS_FIELDS:
         _remove_custom_field("Biometric Integration Settings", fieldname)
 
-    # Direct Hikvision integration does not use HikCentral Person IDs.
-    # Remove the old Employee field left by the previous HikCentral design.
     _remove_custom_field("Employee", "hikcentral_person_id")
 
+    # Kept for compatibility with existing installations. New attendance
+    # processing uses the direct-device fields below and never requires
+    # HikCentral.
     if not frappe.db.exists(
         "Custom Field",
         {"dt": "Employee Checkin", "fieldname": "hikcentral_event_key"},
@@ -49,8 +71,15 @@ def ensure_custom_fields():
             "insert_after": "device_id",
         }).insert(ignore_permissions=True)
 
-    # Device Name is authoritative from the physical Hikvision terminal.
-    # Make the child-table field read-only in the database UI definition.
+    _ensure_custom_field("biometric_event_key", "Biometric Event Key")
+    _ensure_custom_field("biometric_session_key", "Biometric Session Key")
+    _ensure_custom_field(
+        "biometric_movement_log",
+        "Daily Movement Log",
+        fieldtype="Link",
+        options="Daily Employee Movement Log",
+    )
+
     try:
         from frappe.custom.doctype.property_setter.property_setter import make_property_setter
 
