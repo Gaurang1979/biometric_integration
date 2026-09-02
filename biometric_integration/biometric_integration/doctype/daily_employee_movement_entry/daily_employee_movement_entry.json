@@ -1,0 +1,21 @@
+{
+  "doctype": "DocType",
+  "name": "Daily Employee Movement Entry",
+  "module": "Biometric Integration",
+  "istable": 1,
+  "editable_grid": 1,
+  "fields": [
+    {"fieldname":"event_time","fieldtype":"Datetime","label":"Event Time","read_only":1,"in_list_view":1},
+    {"fieldname":"device_name","fieldtype":"Data","label":"Device / Location","read_only":1,"in_list_view":1},
+    {"fieldname":"device_serial_number","fieldtype":"Data","label":"Device Serial Number","read_only":1},
+    {"fieldname":"employee_device_id","fieldtype":"Data","label":"Attendance Device ID","read_only":1},
+    {"fieldname":"authentication_mode","fieldtype":"Data","label":"Authentication Mode","read_only":1},
+    {"fieldname":"authentication_result","fieldtype":"Data","label":"Authentication Result","read_only":1},
+    {"fieldname":"card_no","fieldtype":"Data","label":"Card No","read_only":1},
+    {"fieldname":"direction","fieldtype":"Select","label":"Movement","options":"IN\nOUT\nLOG","read_only":1,"in_list_view":1},
+    {"fieldname":"event_key","fieldtype":"Data","label":"Hikvision Event Key","read_only":1,"hidden":1},
+    {"fieldname":"session_key","fieldtype":"Data","label":"Session Key","read_only":1,"hidden":1},
+    {"fieldname":"employee_checkin","fieldtype":"Link","label":"Employee Checkin","options":"Employee Checkin","read_only":1,"in_list_view":1}
+  ],
+  "permissions": []
+}
