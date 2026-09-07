@@ -1,5 +1,4 @@
 import frappe
-from datetime import date
 from hashlib import sha1
 
 
@@ -56,10 +55,10 @@ def _monthly_log_name(employee, month):
 
 
 def migrate_movement_logs_to_monthly():
-    """Consolidate legacy daily movement documents into one document per employee/month.
+    """Consolidate legacy daily logs into one document per employee/month.
 
-    Existing movement child rows are moved rather than recreated, preserving event keys,
-    session keys and Employee Checkin links. The operation is idempotent.
+    Existing child rows are moved, not recreated, so event keys and existing
+    Employee Checkin links remain intact. The operation is idempotent.
     """
     if not frappe.db.exists("DocType", MOVEMENT_DOCTYPE):
         return
@@ -118,7 +117,6 @@ def migrate_movement_logs_to_monthly():
                 update_modified=False,
             )
 
-        # The legacy parent is now empty, so it can be safely removed.
         if frappe.db.exists(MOVEMENT_DOCTYPE, legacy.name):
             frappe.delete_doc(
                 MOVEMENT_DOCTYPE,
@@ -128,6 +126,32 @@ def migrate_movement_logs_to_monthly():
             )
 
     frappe.db.commit()
+
+    # Reconcile all consolidated logs so movement direction and existing/new
+    # Employee Checkins reflect the new per-day/per-device session rules.
+    try:
+        from biometric_integration.biometric_integration.attendance_sync import _reconcile_monthly_log
+
+        monthly_logs = frappe.get_all(
+            MOVEMENT_DOCTYPE,
+            filters={"month": ["is", "set"]},
+            pluck="name",
+            limit_page_length=0,
+        )
+        for name in monthly_logs:
+            try:
+                _reconcile_monthly_log(frappe.get_doc(MOVEMENT_DOCTYPE, name))
+            except Exception:
+                frappe.log_error(
+                    frappe.get_traceback(),
+                    f"Movement log reconciliation failed during migration: {name}",
+                )
+        frappe.db.commit()
+    except Exception:
+        frappe.log_error(
+            frappe.get_traceback(),
+            "Monthly movement log reconciliation import failed",
+        )
 
 
 def ensure_custom_fields():
@@ -171,5 +195,4 @@ def ensure_custom_fields():
             "Unable to make Biometric Device device_name read-only",
         )
 
-    # Run after DocType schema migration so the new month/event_date columns exist.
     migrate_movement_logs_to_monthly()
