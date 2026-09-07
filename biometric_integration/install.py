@@ -1,7 +1,6 @@
 import frappe
 from hashlib import sha1
 
-
 LEGACY_SETTINGS_FIELDS = (
     "hikcentral_csv_path",
     "hikcentral_duplicate_seconds",
@@ -55,83 +54,113 @@ def _monthly_log_name(employee, month):
 
 
 def migrate_movement_logs_to_monthly():
-    """Consolidate legacy daily logs into one document per employee/month.
-
-    Existing child rows are moved, not recreated, so event keys and existing
-    Employee Checkin links remain intact. The operation is idempotent.
-    """
+    """Consolidate every movement log into one document per employee/month."""
     if not frappe.db.exists("DocType", MOVEMENT_DOCTYPE):
         return
 
-    legacy_logs = frappe.get_all(
+    logs = frappe.get_all(
         MOVEMENT_DOCTYPE,
-        filters={"month": ["is", "not set"]},
-        fields=["name", "employee", "employee_name", "log_date"],
+        fields=["name", "employee", "employee_name", "month", "log_date"],
         limit_page_length=0,
     )
 
-    for legacy in legacy_logs:
-        if not legacy.employee or not legacy.log_date:
+    groups = {}
+    for log in logs:
+        if not log.employee:
             continue
+        month = log.month or (log.log_date.replace(day=1) if log.log_date else None)
+        if not month:
+            continue
+        groups.setdefault((log.employee, month), []).append(log)
 
-        month = legacy.log_date.replace(day=1)
-        target_name = _monthly_log_name(legacy.employee, month)
-
+    for (employee, month), source_logs in groups.items():
+        target_name = _monthly_log_name(employee, month)
         if frappe.db.exists(MOVEMENT_DOCTYPE, target_name):
             target = frappe.get_doc(MOVEMENT_DOCTYPE, target_name)
         else:
             target = frappe.get_doc({
                 "doctype": MOVEMENT_DOCTYPE,
                 "name": target_name,
-                "employee": legacy.employee,
-                "employee_name": legacy.employee_name or frappe.db.get_value("Employee", legacy.employee, "employee_name") or "",
+                "employee": employee,
+                "employee_name": frappe.db.get_value("Employee", employee, "employee_name") or "",
                 "month": month,
+                "log_date": month,
             })
             target.insert(ignore_permissions=True)
 
-        children = frappe.get_all(
-            MOVEMENT_ENTRY_DOCTYPE,
-            filters={"parent": legacy.name, "parenttype": MOVEMENT_DOCTYPE},
-            fields=["name", "event_time", "event_date"],
-            order_by="event_time asc, idx asc",
-            limit_page_length=0,
-        )
+        for source in source_logs:
+            if source.name == target.name:
+                continue
 
-        for child in children:
-            if not child.event_date and child.event_time:
-                frappe.db.set_value(
-                    MOVEMENT_ENTRY_DOCTYPE,
-                    child.name,
-                    "event_date",
-                    child.event_time.date(),
-                    update_modified=False,
-                )
-            frappe.db.set_value(
+            children = frappe.get_all(
                 MOVEMENT_ENTRY_DOCTYPE,
-                child.name,
-                {
+                filters={"parent": source.name, "parenttype": MOVEMENT_DOCTYPE},
+                fields=["name", "event_time", "device_name"],
+                order_by="event_time asc, idx asc",
+                limit_page_length=0,
+            )
+            for child in children:
+                values = {
                     "parent": target.name,
                     "parenttype": MOVEMENT_DOCTYPE,
                     "parentfield": "movement_entries",
-                },
-                update_modified=False,
-            )
+                }
+                if child.event_time:
+                    values["event_date"] = child.event_time.date()
+                if child.device_name:
+                    values["location"] = child.device_name
+                frappe.db.set_value(
+                    MOVEMENT_ENTRY_DOCTYPE,
+                    child.name,
+                    values,
+                    update_modified=False,
+                )
 
-        if frappe.db.exists(MOVEMENT_DOCTYPE, legacy.name):
+            # Existing integration checkins may point to the old parent.
+            if frappe.db.exists("DocType", "Employee Checkin"):
+                if frappe.get_meta("Employee Checkin").has_field("biometric_movement_log"):
+                    checkins = frappe.get_all(
+                        "Employee Checkin",
+                        filters={"biometric_movement_log": source.name},
+                        pluck="name",
+                        limit_page_length=0,
+                    )
+                    for checkin in checkins:
+                        frappe.db.set_value(
+                            "Employee Checkin",
+                            checkin,
+                            "biometric_movement_log",
+                            target.name,
+                            update_modified=False,
+                        )
+
             frappe.delete_doc(
                 MOVEMENT_DOCTYPE,
-                legacy.name,
+                source.name,
                 ignore_permissions=True,
                 force=True,
             )
 
+        # Normalize all rows in the canonical monthly document.
+        children = frappe.get_all(
+            MOVEMENT_ENTRY_DOCTYPE,
+            filters={"parent": target.name, "parenttype": MOVEMENT_DOCTYPE},
+            fields=["name", "event_time", "device_name", "event_date", "location"],
+            limit_page_length=0,
+        )
+        for child in children:
+            values = {}
+            if child.event_time and not child.event_date:
+                values["event_date"] = child.event_time.date()
+            if child.device_name and not child.location:
+                values["location"] = child.device_name
+            if values:
+                frappe.db.set_value(MOVEMENT_ENTRY_DOCTYPE, child.name, values, update_modified=False)
+
     frappe.db.commit()
 
-    # Reconcile all consolidated logs so movement direction and existing/new
-    # Employee Checkins reflect the new per-day/per-device session rules.
     try:
         from biometric_integration.biometric_integration.attendance_sync import _reconcile_monthly_log
-
         monthly_logs = frappe.get_all(
             MOVEMENT_DOCTYPE,
             filters={"month": ["is", "set"]},
