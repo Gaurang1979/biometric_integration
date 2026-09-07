@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 from hashlib import sha1
 from zoneinfo import ZoneInfo
 
@@ -14,7 +14,6 @@ from biometric_integration.biometric_integration.hikvision import (
     _parse_event_time,
     _settings,
 )
-
 
 MOVEMENT_DOCTYPE = "Daily Employee Movement Log"
 MOVEMENT_ENTRY_DOCTYPE = "Daily Employee Movement Entry"
@@ -60,9 +59,15 @@ def _get_or_create_daily_log(employee, log_date):
     return doc
 
 
+def _event_exists(event_key):
+    return frappe.db.exists(MOVEMENT_ENTRY_DOCTYPE, {"event_key": event_key})
+
+
 def _append_event(log, device, event):
+    """Append one event only if it does not already exist anywhere."""
     event_key = event["event_key"]
-    if frappe.db.exists(MOVEMENT_ENTRY_DOCTYPE, {"event_key": event_key}):
+
+    if _event_exists(event_key):
         return False
 
     timezone_name = device.timezone or DEFAULT_TIMEZONE
@@ -88,6 +93,31 @@ def _append_event(log, device, event):
     row.direction = "LOG"
     row.event_key = event_key
     return True
+
+
+def _save_new_movement_event(log, device, event):
+    """Save a new event safely; never save a log merely because an old event was seen."""
+    if _event_exists(event["event_key"]):
+        return False
+
+    before = len(log.movement_entries or [])
+    if not _append_event(log, device, event):
+        return False
+
+    if len(log.movement_entries or []) <= before:
+        return False
+
+    try:
+        log.save(ignore_permissions=True)
+        return True
+    except frappe.DuplicateEntryError:
+        # A concurrent worker may have inserted the same unique event key.
+        # The unique DB constraint remains the final protection.
+        frappe.logger().warning(
+            "Duplicate Hikvision movement event skipped: %s",
+            event["event_key"],
+        )
+        return False
 
 
 def _load_events_for_log(log):
@@ -119,6 +149,13 @@ def _device_identity(row):
 
 
 def _sessionize(rows):
+    """Create sessions from consecutive events on the same physical device.
+
+    Rows belong to one employee/day movement log, so employee identity is already
+    fixed. A change of physical device starts a new session. Thus Office -> Factory
+    -> Office produces three sessions, while repeated events on one device stay in
+    one session.
+    """
     sessions = []
     current = None
 
@@ -142,17 +179,13 @@ def _find_checkin_by_session(session_key):
 
 
 def _get_device_for_row(row):
-    """Return the configured Hikvision device for a movement row."""
     settings = _settings()
     row_serial = (row.device_serial_number or "").strip()
     row_name = (row.device_name or "").strip()
 
     for device in settings.devices or []:
         device_serial = (
-            device.serial_number
-            or device.device_id
-            or device.ip
-            or ""
+            device.serial_number or device.device_id or device.ip or ""
         ).strip()
         device_name = (device.device_name or "").strip()
 
@@ -188,44 +221,28 @@ def _create_or_update_checkin(employee, row, log_type, session_key):
         checkin = frappe.get_doc("Employee Checkin", existing.name)
         changed = False
 
-        if checkin.time != row.event_time:
-            checkin.time = row.event_time
-            changed = True
+        values = {
+            "time": row.event_time,
+            "log_type": log_type,
+            "device_id": row.device_serial_number or row.device_name,
+            "latitude": latitude,
+            "longitude": longitude,
+        }
+        for fieldname, value in values.items():
+            if getattr(checkin, fieldname, None) != value:
+                setattr(checkin, fieldname, value)
+                changed = True
 
-        if checkin.log_type != log_type:
-            checkin.log_type = log_type
-            changed = True
-
-        target_device = row.device_serial_number or row.device_name
-        if checkin.device_id != target_device:
-            checkin.device_id = target_device
-            changed = True
-
-        if checkin.latitude != latitude:
-            checkin.latitude = latitude
-            changed = True
-
-        if checkin.longitude != longitude:
-            checkin.longitude = longitude
-            changed = True
-
-        if (
-            meta.has_field("biometric_event_key")
-            and checkin.biometric_event_key != row.event_key
-        ):
+        if meta.has_field("biometric_event_key") and checkin.biometric_event_key != row.event_key:
             checkin.biometric_event_key = row.event_key
             changed = True
 
-        if (
-            meta.has_field("biometric_movement_log")
-            and checkin.biometric_movement_log != row.parent
-        ):
+        if meta.has_field("biometric_movement_log") and checkin.biometric_movement_log != row.parent:
             checkin.biometric_movement_log = row.parent
             changed = True
 
         if changed:
             checkin.save(ignore_permissions=True)
-
         return checkin.name
 
     checkin = frappe.new_doc("Employee Checkin")
@@ -418,16 +435,30 @@ def sync_all_devices(from_datetime=None, to_datetime=None, require_scheduler=Fal
 
         log_date = _day_from_event(event["event_dt"], device.timezone or DEFAULT_TIMEZONE)
         log = _get_or_create_daily_log(event["employee"], log_date)
-        if _append_event(log, device, event):
-            totals["movement_created"] += 1
-        log.save(ignore_permissions=True)
-        affected.add(log.name)
+
+        try:
+            if _save_new_movement_event(log, device, event):
+                totals["movement_created"] += 1
+                affected.add(log.name)
+        except Exception:
+            totals["errors"] += 1
+            frappe.log_error(
+                frappe.get_traceback(),
+                f"Hikvision movement event save failed: {event['event_key']}",
+            )
 
     for log_name in affected:
-        log = frappe.get_doc(MOVEMENT_DOCTYPE, log_name)
-        result = _reconcile_daily_log(log)
-        totals["sessions"] += result["sessions"]
-        totals["checkins"] += result["checkins"]
+        try:
+            log = frappe.get_doc(MOVEMENT_DOCTYPE, log_name)
+            result = _reconcile_daily_log(log)
+            totals["sessions"] += result["sessions"]
+            totals["checkins"] += result["checkins"]
+        except Exception:
+            totals["errors"] += 1
+            frappe.log_error(
+                frappe.get_traceback(),
+                f"Hikvision movement reconciliation failed: {log_name}",
+            )
 
     frappe.db.commit()
 
@@ -440,3 +471,50 @@ def sync_all_devices(from_datetime=None, to_datetime=None, require_scheduler=Fal
             f"new movement events; reconciled {totals['sessions']} device sessions."
         ),
     }
+
+
+def sync_device(device_name, from_datetime, to_datetime):
+    """Compatibility wrapper for callers that synchronize one device."""
+    settings = _settings()
+    device = next((d for d in settings.devices or [] if d.name == device_name), None)
+    if not device:
+        return {"status": "error", "message": f"Biometric Device {device_name} was not found."}
+    if not device.enabled:
+        return {"status": "error", "device": device.device_name or device.ip, "message": "Device is disabled"}
+
+    try:
+        raw_events = _fetch_events(device, from_datetime, to_datetime)
+        duplicate_seconds = max(int(settings.duplicate_seconds or DEFAULT_DUPLICATE_SECONDS), 0)
+        normalized = _normalize_device_events(device, raw_events, duplicate_seconds)
+        created = 0
+        affected = set()
+
+        for event in normalized:
+            log_date = _day_from_event(event["event_dt"], device.timezone or DEFAULT_TIMEZONE)
+            log = _get_or_create_daily_log(event["employee"], log_date)
+            if _save_new_movement_event(log, device, event):
+                created += 1
+                affected.add(log.name)
+
+        sessions = 0
+        checkins = 0
+        for log_name in affected:
+            result = _reconcile_daily_log(frappe.get_doc(MOVEMENT_DOCTYPE, log_name))
+            sessions += result["sessions"]
+            checkins += result["checkins"]
+
+        frappe.db.commit()
+        return {
+            "status": "success",
+            "device": device.device_name or device.ip,
+            "ip": device.ip,
+            "serial_number": device.serial_number,
+            "fetched": len(raw_events),
+            "processed": len(normalized),
+            "movement_created": created,
+            "sessions": sessions,
+            "checkins": checkins,
+        }
+    except Exception as exc:
+        frappe.log_error(frappe.get_traceback(), f"Hikvision single-device sync failed: {device.device_name or device.ip}")
+        return {"status": "error", "device": device.device_name or device.ip, "ip": device.ip, "message": str(exc)}
