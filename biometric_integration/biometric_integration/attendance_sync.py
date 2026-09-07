@@ -141,10 +141,45 @@ def _find_checkin_by_session(session_key):
     )
 
 
+def _get_device_for_row(row):
+    """Return the configured Hikvision device for a movement row."""
+    settings = _settings()
+    row_serial = (row.device_serial_number or "").strip()
+    row_name = (row.device_name or "").strip()
+
+    for device in settings.devices or []:
+        device_serial = (
+            device.serial_number
+            or device.device_id
+            or device.ip
+            or ""
+        ).strip()
+        device_name = (device.device_name or "").strip()
+
+        if row_serial and row_serial == device_serial:
+            return device
+        if row_name and row_name == device_name:
+            return device
+
+    return None
+
+
 def _create_or_update_checkin(employee, row, log_type, session_key):
     meta = frappe.get_meta("Employee Checkin")
     if not meta.has_field("biometric_session_key"):
-        raise RuntimeError("Employee Checkin biometric_session_key is missing. Run bench migrate.")
+        raise RuntimeError(
+            "Employee Checkin biometric_session_key is missing. Run bench migrate."
+        )
+
+    device = _get_device_for_row(row)
+    latitude = device.latitude if device and device.latitude is not None else None
+    longitude = device.longitude if device and device.longitude is not None else None
+
+    if latitude is None or longitude is None:
+        raise RuntimeError(
+            f"Latitude and longitude are required for biometric check-in. "
+            f"Device '{row.device_name}' ({row.device_serial_number}) has no configured coordinates."
+        )
 
     full_session_key = f"{session_key}:{log_type}"
     existing = _find_checkin_by_session(full_session_key)
@@ -152,24 +187,45 @@ def _create_or_update_checkin(employee, row, log_type, session_key):
     if existing:
         checkin = frappe.get_doc("Employee Checkin", existing.name)
         changed = False
+
         if checkin.time != row.event_time:
             checkin.time = row.event_time
             changed = True
+
         if checkin.log_type != log_type:
             checkin.log_type = log_type
             changed = True
+
         target_device = row.device_serial_number or row.device_name
         if checkin.device_id != target_device:
             checkin.device_id = target_device
             changed = True
-        if meta.has_field("biometric_event_key") and checkin.biometric_event_key != row.event_key:
+
+        if checkin.latitude != latitude:
+            checkin.latitude = latitude
+            changed = True
+
+        if checkin.longitude != longitude:
+            checkin.longitude = longitude
+            changed = True
+
+        if (
+            meta.has_field("biometric_event_key")
+            and checkin.biometric_event_key != row.event_key
+        ):
             checkin.biometric_event_key = row.event_key
             changed = True
-        if meta.has_field("biometric_movement_log") and checkin.biometric_movement_log != row.parent:
+
+        if (
+            meta.has_field("biometric_movement_log")
+            and checkin.biometric_movement_log != row.parent
+        ):
             checkin.biometric_movement_log = row.parent
             changed = True
+
         if changed:
             checkin.save(ignore_permissions=True)
+
         return checkin.name
 
     checkin = frappe.new_doc("Employee Checkin")
@@ -177,6 +233,8 @@ def _create_or_update_checkin(employee, row, log_type, session_key):
     checkin.time = row.event_time
     checkin.log_type = log_type
     checkin.device_id = row.device_serial_number or row.device_name
+    checkin.latitude = latitude
+    checkin.longitude = longitude
     checkin.biometric_session_key = full_session_key
 
     if meta.has_field("biometric_event_key"):
