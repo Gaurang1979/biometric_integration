@@ -36,10 +36,14 @@ def _event_value(event, *names):
 
 def _get_or_create_monthly_log(employee, month):
     name = frappe.db.get_value(
-        MOVEMENT_DOCTYPE, {"employee": employee, "month": month}, "name", order_by="creation asc"
+        MOVEMENT_DOCTYPE,
+        {"employee": employee, "month": month},
+        "name",
+        order_by="creation asc",
     )
     if name:
         return frappe.get_doc(MOVEMENT_DOCTYPE, name)
+
     doc = frappe.new_doc(MOVEMENT_DOCTYPE)
     doc.employee = employee
     doc.employee_name = frappe.db.get_value("Employee", employee, "employee_name") or ""
@@ -56,14 +60,29 @@ def _event_exists(event_key):
 def _append_event(log, device, event):
     if _event_exists(event["event_key"]):
         return False
+
     timezone_name = device.timezone or DEFAULT_TIMEZONE
+    local_time = _as_local_naive(event["event_dt"], timezone_name)
     row = log.append("movement_entries", {})
-    row.event_time = _as_local_naive(event["event_dt"], timezone_name)
+    row.event_date = local_time.date()
+    row.event_time = local_time
     row.device_name = device.device_name or device.ip
+    row.location = device.device_name or device.ip
     row.device_serial_number = device.serial_number or device.device_id or device.ip
     row.employee_device_id = _event_value(event, "employeeNoString")
-    row.authentication_mode = _event_value(event, "currentVerifyMode", "currentVerifyModeName", "authenticationMode", "verifyMode")
-    row.authentication_result = _event_value(event, "currentEvent", "authenticationResult", "result")
+    row.authentication_mode = _event_value(
+        event,
+        "currentVerifyMode",
+        "currentVerifyModeName",
+        "authenticationMode",
+        "verifyMode",
+    )
+    row.authentication_result = _event_value(
+        event,
+        "currentEvent",
+        "authenticationResult",
+        "result",
+    )
     row.card_no = _event_value(event, "cardNo", "cardNumber")
     row.direction = "LOG"
     row.event_key = event["event_key"]
@@ -79,7 +98,9 @@ def _save_new_movement_event(log, device, event):
         log.save(ignore_permissions=True)
         return True
     except frappe.DuplicateEntryError:
-        frappe.logger().warning("Duplicate Hikvision movement event skipped: %s", event["event_key"])
+        frappe.logger().warning(
+            "Duplicate Hikvision movement event skipped: %s", event["event_key"]
+        )
         return False
 
 
@@ -87,7 +108,23 @@ def _load_events_for_log(log):
     return frappe.get_all(
         MOVEMENT_ENTRY_DOCTYPE,
         filters={"parent": log.name, "parenttype": MOVEMENT_DOCTYPE},
-        fields=["name", "parent", "event_time", "device_name", "device_serial_number", "employee_device_id", "authentication_mode", "authentication_result", "card_no", "direction", "event_key", "session_key", "employee_checkin"],
+        fields=[
+            "name",
+            "parent",
+            "event_time",
+            "event_date",
+            "location",
+            "device_name",
+            "device_serial_number",
+            "employee_device_id",
+            "authentication_mode",
+            "authentication_result",
+            "card_no",
+            "direction",
+            "event_key",
+            "session_key",
+            "employee_checkin",
+        ],
         order_by="event_time asc, idx asc",
         limit_page_length=0,
     )
@@ -108,7 +145,11 @@ def _sessionize(rows):
     for row in rows:
         day = row.event_time.date() if row.event_time else None
         identity = _device_identity(row)
-        if current is None or day != current["day"] or identity != current["device_identity"]:
+        if (
+            current is None
+            or day != current["day"]
+            or identity != current["device_identity"]
+        ):
             current = {"day": day, "device_identity": identity, "rows": []}
             sessions.append(current)
         current["rows"].append(row)
@@ -116,7 +157,12 @@ def _sessionize(rows):
 
 
 def _find_checkin_by_session(session_key):
-    return frappe.db.get_value("Employee Checkin", {"biometric_session_key": session_key}, ["name", "time", "log_type", "device_id", "biometric_event_key"], as_dict=True)
+    return frappe.db.get_value(
+        "Employee Checkin",
+        {"biometric_session_key": session_key},
+        ["name", "time", "log_type", "device_id", "biometric_event_key"],
+        as_dict=True,
+    )
 
 
 def _get_device_for_row(row):
@@ -136,18 +182,30 @@ def _get_device_for_row(row):
 def _create_or_update_checkin(employee, row, log_type, session_key):
     meta = frappe.get_meta("Employee Checkin")
     if not meta.has_field("biometric_session_key"):
-        raise RuntimeError("Employee Checkin biometric_session_key is missing. Run bench migrate.")
+        raise RuntimeError(
+            "Employee Checkin biometric_session_key is missing. Run bench migrate."
+        )
+
     device = _get_device_for_row(row)
     latitude = device.latitude if device and device.latitude is not None else None
     longitude = device.longitude if device and device.longitude is not None else None
     if latitude is None or longitude is None:
-        raise RuntimeError(f"Latitude and longitude are required for biometric check-in. Device '{row.device_name}' ({row.device_serial_number}) has no configured coordinates.")
+        raise RuntimeError(
+            f"Latitude and longitude are required for biometric check-in. Device '{row.device_name}' ({row.device_serial_number}) has no configured coordinates."
+        )
+
     full_key = f"{session_key}:{log_type}"
     existing = _find_checkin_by_session(full_key)
     if existing:
         checkin = frappe.get_doc("Employee Checkin", existing.name)
         changed = False
-        values = {"time": row.event_time, "log_type": log_type, "device_id": row.device_serial_number or row.device_name, "latitude": latitude, "longitude": longitude}
+        values = {
+            "time": row.event_time,
+            "log_type": log_type,
+            "device_id": row.device_serial_number or row.device_name,
+            "latitude": latitude,
+            "longitude": longitude,
+        }
         for fieldname, value in values.items():
             if getattr(checkin, fieldname, None) != value:
                 setattr(checkin, fieldname, value)
@@ -161,6 +219,7 @@ def _create_or_update_checkin(employee, row, log_type, session_key):
         if changed:
             checkin.save(ignore_permissions=True)
         return checkin.name
+
     checkin = frappe.new_doc("Employee Checkin")
     checkin.employee = employee
     checkin.time = row.event_time
@@ -181,24 +240,57 @@ def _reconcile_monthly_log(log):
     rows = _load_events_for_log(log)
     if not rows:
         return {"sessions": 0, "checkins": 0}
+
     sessions = _sessionize(rows)
     checkins = 0
     for session in sessions:
         first = session["rows"][0]
         last = session["rows"][-1]
         session_key = _stable_session_key(log.employee, session["day"], first.event_key)
+
         for index, row in enumerate(session["rows"]):
-            direction = "IN" if index == 0 else ("OUT" if index == len(session["rows"]) - 1 else "LOG")
-            frappe.db.set_value(MOVEMENT_ENTRY_DOCTYPE, row.name, {"direction": direction, "session_key": session_key}, update_modified=False)
-        in_checkin = _create_or_update_checkin(log.employee, first, "IN", session_key)
+            direction = (
+                "IN"
+                if index == 0
+                else ("OUT" if index == len(session["rows"]) - 1 else "LOG")
+            )
+            frappe.db.set_value(
+                MOVEMENT_ENTRY_DOCTYPE,
+                row.name,
+                {
+                    "event_date": row.event_time.date() if row.event_time else None,
+                    "location": row.location or row.device_name,
+                    "direction": direction,
+                    "session_key": session_key,
+                },
+                update_modified=False,
+            )
+
+        in_checkin = _create_or_update_checkin(
+            log.employee, first, "IN", session_key
+        )
         checkins += 1
         out_checkin = None
         if len(session["rows"]) > 1:
-            out_checkin = _create_or_update_checkin(log.employee, last, "OUT", session_key)
+            out_checkin = _create_or_update_checkin(
+                log.employee, last, "OUT", session_key
+            )
             checkins += 1
+
         for row in session["rows"]:
-            checkin_name = in_checkin if row.name == first.name else (out_checkin if row.name == last.name else None)
-            frappe.db.set_value(MOVEMENT_ENTRY_DOCTYPE, row.name, "employee_checkin", checkin_name, update_modified=False)
+            checkin_name = (
+                in_checkin
+                if row.name == first.name
+                else (out_checkin if row.name == last.name else None)
+            )
+            frappe.db.set_value(
+                MOVEMENT_ENTRY_DOCTYPE,
+                row.name,
+                "employee_checkin",
+                checkin_name,
+                update_modified=False,
+            )
+
     return {"sessions": len(sessions), "checkins": checkins}
 
 
@@ -212,54 +304,129 @@ def _normalize_device_events(device, raw_events, duplicate_seconds):
         employee_no = str(raw.get("employeeNoString") or "").strip()
         if not event_dt or not employee_no:
             continue
-        employee = frappe.db.get_value("Employee", {"attendance_device_id": employee_no, "status": "Active"}, "name")
+        employee = frappe.db.get_value(
+            "Employee",
+            {"attendance_device_id": employee_no, "status": "Active"},
+            "name",
+        )
         if not employee:
             continue
-        normalized.append({**raw, "event_dt": event_dt, "employee": employee, "event_key": _event_key(device, raw), "device_serial": device.serial_number or device.device_id or device.ip})
+        normalized.append(
+            {
+                **raw,
+                "event_dt": event_dt,
+                "employee": employee,
+                "event_key": _event_key(device, raw),
+                "device_serial": device.serial_number or device.device_id or device.ip,
+            }
+        )
     return _group_events(normalized, duplicate_seconds)
 
 
 def _scheduler_start(to_datetime):
     local_now = to_datetime.astimezone(ZoneInfo(DEFAULT_TIMEZONE))
-    return local_now.replace(hour=0, minute=0, second=0, microsecond=0).replace(tzinfo=None)
+    return local_now.replace(
+        hour=0, minute=0, second=0, microsecond=0
+    ).replace(tzinfo=None)
 
 
-def sync_all_devices(from_datetime=None, to_datetime=None, require_scheduler=False):
+def sync_all_devices(
+    from_datetime=None, to_datetime=None, require_scheduler=False
+):
     settings = _settings()
     if not settings.enabled:
-        return {"status": "error", "message": "Biometric Integration is disabled.", "devices": []}
+        return {
+            "status": "error",
+            "message": "Biometric Integration is disabled.",
+            "devices": [],
+        }
     if require_scheduler and not settings.scheduler_enabled:
-        return {"status": "skipped", "message": "Scheduler is disabled.", "devices": []}
+        return {
+            "status": "skipped",
+            "message": "Scheduler is disabled.",
+            "devices": [],
+        }
     if from_datetime is None or to_datetime is None:
         to_datetime = frappe.utils.now_datetime()
         from_datetime = _scheduler_start(to_datetime)
+
     devices = _get_enabled_devices()
     if not devices:
-        return {"status": "error", "message": "No enabled Hikvision devices found.", "devices": []}
-    duplicate_seconds = max(int(settings.duplicate_seconds or DEFAULT_DUPLICATE_SECONDS), 0)
+        return {
+            "status": "error",
+            "message": "No enabled Hikvision devices found.",
+            "devices": [],
+        }
+
+    duplicate_seconds = max(
+        int(settings.duplicate_seconds or DEFAULT_DUPLICATE_SECONDS), 0
+    )
     all_events = []
     results = []
-    totals = {"fetched": 0, "processed": 0, "movement_created": 0, "sessions": 0, "checkins": 0, "unmatched": 0, "errors": 0}
+    totals = {
+        "fetched": 0,
+        "processed": 0,
+        "movement_created": 0,
+        "sessions": 0,
+        "checkins": 0,
+        "unmatched": 0,
+        "errors": 0,
+    }
+
     for device in devices:
         try:
             raw_events = _fetch_events(device, from_datetime, to_datetime)
-            normalized = _normalize_device_events(device, raw_events, duplicate_seconds)
+            normalized = _normalize_device_events(
+                device, raw_events, duplicate_seconds
+            )
             all_events.extend(normalized)
             totals["fetched"] += len(raw_events)
             totals["processed"] += len(normalized)
-            frappe.db.set_value("Biometric Device", device.name, {"last_sync": frappe.utils.now_datetime(), "last_sync_status": f"Fetched {len(raw_events)}; processed {len(normalized)} employee events"}, update_modified=False)
-            results.append({"status": "success", "device": device.device_name or device.ip, "ip": device.ip, "serial_number": device.serial_number, "fetched": len(raw_events), "processed": len(normalized)})
+            frappe.db.set_value(
+                "Biometric Device",
+                device.name,
+                {
+                    "last_sync": frappe.utils.now_datetime(),
+                    "last_sync_status": f"Fetched {len(raw_events)}; processed {len(normalized)} employee events",
+                },
+                update_modified=False,
+            )
+            results.append(
+                {
+                    "status": "success",
+                    "device": device.device_name or device.ip,
+                    "ip": device.ip,
+                    "serial_number": device.serial_number,
+                    "fetched": len(raw_events),
+                    "processed": len(normalized),
+                }
+            )
         except Exception as exc:
             totals["errors"] += 1
-            frappe.log_error(frappe.get_traceback(), f"Hikvision movement sync failed: {device.device_name or device.ip}")
-            results.append({"status": "error", "device": device.device_name or device.ip, "ip": device.ip, "message": str(exc)})
-    device_map = {(d.serial_number or d.device_id or d.ip): d for d in devices}
+            frappe.log_error(
+                frappe.get_traceback(),
+                f"Hikvision movement sync failed: {device.device_name or device.ip}",
+            )
+            results.append(
+                {
+                    "status": "error",
+                    "device": device.device_name or device.ip,
+                    "ip": device.ip,
+                    "message": str(exc),
+                }
+            )
+
+    device_map = {
+        (d.serial_number or d.device_id or d.ip): d for d in devices
+    }
     affected = set()
     for event in all_events:
         device = device_map.get(event["device_serial"])
         if not device:
             continue
-        month = _month_from_event(event["event_dt"], device.timezone or DEFAULT_TIMEZONE)
+        month = _month_from_event(
+            event["event_dt"], device.timezone or DEFAULT_TIMEZONE
+        )
         log = _get_or_create_monthly_log(event["employee"], month)
         try:
             if _save_new_movement_event(log, device, event):
@@ -267,24 +434,54 @@ def sync_all_devices(from_datetime=None, to_datetime=None, require_scheduler=Fal
                 affected.add(log.name)
         except Exception:
             totals["errors"] += 1
-            frappe.log_error(frappe.get_traceback(), f"Hikvision movement event save failed: {event['event_key']}")
+            frappe.log_error(
+                frappe.get_traceback(),
+                f"Hikvision movement event save failed: {event['event_key']}",
+            )
+
     for log_name in affected:
         try:
-            result = _reconcile_monthly_log(frappe.get_doc(MOVEMENT_DOCTYPE, log_name))
+            result = _reconcile_monthly_log(
+                frappe.get_doc(MOVEMENT_DOCTYPE, log_name)
+            )
             totals["sessions"] += result["sessions"]
             totals["checkins"] += result["checkins"]
         except Exception:
             totals["errors"] += 1
-            frappe.log_error(frappe.get_traceback(), f"Hikvision movement reconciliation failed: {log_name}")
+            frappe.log_error(
+                frappe.get_traceback(),
+                f"Hikvision movement reconciliation failed: {log_name}",
+            )
+
     frappe.db.commit()
-    return {"status": "success" if totals["errors"] == 0 else "partial", **totals, "devices": results, "message": f"Fetched {totals['fetched']} events; stored {totals['movement_created']} new movement events; reconciled {totals['sessions']} device sessions."}
+    return {
+        "status": "success" if totals["errors"] == 0 else "partial",
+        **totals,
+        "devices": results,
+        "message": f"Fetched {totals['fetched']} events; stored {totals['movement_created']} new movement events; reconciled {totals['sessions']} device sessions.",
+    }
 
 
 def sync_device(device_name, from_datetime, to_datetime):
     settings = _settings()
-    device = next((d for d in settings.devices or [] if d.name == device_name), None)
+    device = next(
+        (d for d in settings.devices or [] if d.name == device_name),
+        None,
+    )
     if not device:
-        return {"status": "error", "message": f"Device not found: {device_name}"}
+        return {
+            "status": "error",
+            "message": f"Device not found: {device_name}",
+        }
     raw_events = _fetch_events(device, from_datetime, to_datetime)
-    normalized = _normalize_device_events(device, raw_events, max(int(settings.duplicate_seconds or DEFAULT_DUPLICATE_SECONDS), 0))
-    return {"status": "success", "device": device_name, "fetched": len(raw_events), "processed": len(normalized)}
+    normalized = _normalize_device_events(
+        device,
+        raw_events,
+        max(int(settings.duplicate_seconds or DEFAULT_DUPLICATE_SECONDS), 0),
+    )
+    return {
+        "status": "success",
+        "device": device_name,
+        "fetched": len(raw_events),
+        "processed": len(normalized),
+    }
