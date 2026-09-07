@@ -1,4 +1,6 @@
 import frappe
+from datetime import date
+from hashlib import sha1
 
 
 LEGACY_SETTINGS_FIELDS = (
@@ -6,6 +8,9 @@ LEGACY_SETTINGS_FIELDS = (
     "hikcentral_duplicate_seconds",
     "enable_hikcentral_csv_sync",
 )
+
+MOVEMENT_DOCTYPE = "Daily Employee Movement Log"
+MOVEMENT_ENTRY_DOCTYPE = "Daily Employee Movement Entry"
 
 
 def _remove_custom_field(dt, fieldname):
@@ -45,6 +50,86 @@ def _ensure_custom_field(fieldname, label, fieldtype="Data", options=None):
     frappe.get_doc(field).insert(ignore_permissions=True)
 
 
+def _monthly_log_name(employee, month):
+    digest = sha1(f"{employee}|{month}".encode()).hexdigest()[:16]
+    return f"MOV-{digest}"
+
+
+def migrate_movement_logs_to_monthly():
+    """Consolidate legacy daily movement documents into one document per employee/month.
+
+    Existing movement child rows are moved rather than recreated, preserving event keys,
+    session keys and Employee Checkin links. The operation is idempotent.
+    """
+    if not frappe.db.exists("DocType", MOVEMENT_DOCTYPE):
+        return
+
+    legacy_logs = frappe.get_all(
+        MOVEMENT_DOCTYPE,
+        filters={"month": ["is", "not set"]},
+        fields=["name", "employee", "employee_name", "log_date"],
+        limit_page_length=0,
+    )
+
+    for legacy in legacy_logs:
+        if not legacy.employee or not legacy.log_date:
+            continue
+
+        month = legacy.log_date.replace(day=1)
+        target_name = _monthly_log_name(legacy.employee, month)
+
+        if frappe.db.exists(MOVEMENT_DOCTYPE, target_name):
+            target = frappe.get_doc(MOVEMENT_DOCTYPE, target_name)
+        else:
+            target = frappe.get_doc({
+                "doctype": MOVEMENT_DOCTYPE,
+                "name": target_name,
+                "employee": legacy.employee,
+                "employee_name": legacy.employee_name or frappe.db.get_value("Employee", legacy.employee, "employee_name") or "",
+                "month": month,
+            })
+            target.insert(ignore_permissions=True)
+
+        children = frappe.get_all(
+            MOVEMENT_ENTRY_DOCTYPE,
+            filters={"parent": legacy.name, "parenttype": MOVEMENT_DOCTYPE},
+            fields=["name", "event_time", "event_date"],
+            order_by="event_time asc, idx asc",
+            limit_page_length=0,
+        )
+
+        for child in children:
+            if not child.event_date and child.event_time:
+                frappe.db.set_value(
+                    MOVEMENT_ENTRY_DOCTYPE,
+                    child.name,
+                    "event_date",
+                    child.event_time.date(),
+                    update_modified=False,
+                )
+            frappe.db.set_value(
+                MOVEMENT_ENTRY_DOCTYPE,
+                child.name,
+                {
+                    "parent": target.name,
+                    "parenttype": MOVEMENT_DOCTYPE,
+                    "parentfield": "movement_entries",
+                },
+                update_modified=False,
+            )
+
+        # The legacy parent is now empty, so it can be safely removed.
+        if frappe.db.exists(MOVEMENT_DOCTYPE, legacy.name):
+            frappe.delete_doc(
+                MOVEMENT_DOCTYPE,
+                legacy.name,
+                ignore_permissions=True,
+                force=True,
+            )
+
+    frappe.db.commit()
+
+
 def ensure_custom_fields():
     """Create current integration metadata and remove obsolete fields."""
     for fieldname in LEGACY_SETTINGS_FIELDS:
@@ -52,9 +137,6 @@ def ensure_custom_fields():
 
     _remove_custom_field("Employee", "hikcentral_person_id")
 
-    # Kept for compatibility with existing installations. New attendance
-    # processing uses the direct-device fields below and never requires
-    # HikCentral.
     if not frappe.db.exists(
         "Custom Field",
         {"dt": "Employee Checkin", "fieldname": "hikcentral_event_key"},
@@ -77,23 +159,17 @@ def ensure_custom_fields():
         "biometric_movement_log",
         "Daily Movement Log",
         fieldtype="Link",
-        options="Daily Employee Movement Log",
+        options=MOVEMENT_DOCTYPE,
     )
 
     try:
         from frappe.custom.doctype.property_setter.property_setter import make_property_setter
-
-        make_property_setter(
-            "Biometric Device",
-            "device_name",
-            "read_only",
-            1,
-            "Check",
-        )
+        make_property_setter("Biometric Device", "device_name", "read_only", 1, "Check")
     except Exception:
         frappe.log_error(
             frappe.get_traceback(),
             "Unable to make Biometric Device device_name read-only",
         )
 
-    frappe.db.commit()
+    # Run after DocType schema migration so the new month/event_date columns exist.
+    migrate_movement_logs_to_monthly()
