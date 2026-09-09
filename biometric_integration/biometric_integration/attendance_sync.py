@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from hashlib import sha1
 from zoneinfo import ZoneInfo
 
@@ -16,6 +17,7 @@ from biometric_integration.biometric_integration.hikvision import (
 
 MOVEMENT_DOCTYPE = "Daily Employee Movement Log"
 MOVEMENT_ENTRY_DOCTYPE = "Daily Employee Movement Entry"
+ATTENDANCE_RELEASE_DELAY_HOURS = 12
 
 
 def _as_local_naive(event_dt, timezone_name):
@@ -179,6 +181,86 @@ def _get_device_for_row(row):
     return None
 
 
+def _get_shift_assignment(employee, event_time):
+    if not frappe.db.exists("DocType", "Shift Assignment"):
+        return None
+
+    event_date = event_time.date()
+    assignments = frappe.get_all(
+        "Shift Assignment",
+        filters={
+            "employee": employee,
+            "docstatus": 1,
+            "start_date": ["<=", event_date],
+        },
+        fields=["name", "shift_type", "start_date", "end_date"],
+        order_by="start_date desc, creation desc",
+        limit_page_length=20,
+    )
+    for assignment in assignments:
+        end_date = assignment.end_date
+        if end_date and end_date < event_date:
+            continue
+        if assignment.shift_type:
+            return assignment
+    return None
+
+
+def _get_shift_release_time(employee, event_time):
+    """Return Shift End + 12h for the employee's assigned shift on event date."""
+    assignment = _get_shift_assignment(employee, event_time)
+    if not assignment:
+        return None
+
+    shift_type = frappe.db.get_value(
+        "Shift Type",
+        assignment.shift_type,
+        ["start_time", "end_time"],
+        as_dict=True,
+    )
+    if not shift_type or shift_type.end_time is None:
+        return None
+
+    event_date = event_time.date()
+    end_time = shift_type.end_time
+    if isinstance(end_time, str):
+        try:
+            end_time = datetime.strptime(end_time, "%H:%M:%S").time()
+        except ValueError:
+            try:
+                end_time = datetime.strptime(end_time, "%H:%M").time()
+            except ValueError:
+                return None
+
+    shift_end = datetime.combine(event_date, end_time)
+    start_time = shift_type.start_time
+    if isinstance(start_time, str):
+        try:
+            start_time = datetime.strptime(start_time, "%H:%M:%S").time()
+        except ValueError:
+            try:
+                start_time = datetime.strptime(start_time, "%H:%M").time()
+            except ValueError:
+                start_time = None
+
+    # If the shift end clock time is earlier than the shift start clock time,
+    # the shift ends on the following calendar day.
+    if start_time and end_time < start_time:
+        shift_end += timedelta(days=1)
+
+    return shift_end + timedelta(hours=ATTENDANCE_RELEASE_DELAY_HOURS)
+
+
+def _attendance_is_released(employee, event_time):
+    release_time = _get_shift_release_time(employee, event_time)
+    if release_time is None:
+        return False, None
+    now = frappe.utils.now_datetime()
+    if now.tzinfo is not None:
+        now = now.replace(tzinfo=None)
+    return now >= release_time, release_time
+
+
 def _create_or_update_checkin(employee, row, log_type, session_key):
     meta = frappe.get_meta("Employee Checkin")
     if not meta.has_field("biometric_session_key"):
@@ -239,10 +321,11 @@ def _create_or_update_checkin(employee, row, log_type, session_key):
 def _reconcile_monthly_log(log):
     rows = _load_events_for_log(log)
     if not rows:
-        return {"sessions": 0, "checkins": 0}
+        return {"sessions": 0, "checkins": 0, "pending": 0}
 
     sessions = _sessionize(rows)
     checkins = 0
+    pending = 0
     for session in sessions:
         first = session["rows"][0]
         last = session["rows"][-1]
@@ -265,6 +348,11 @@ def _reconcile_monthly_log(log):
                 },
                 update_modified=False,
             )
+
+        released, release_time = _attendance_is_released(log.employee, first.event_time)
+        if not released:
+            pending += 1
+            continue
 
         in_checkin = _create_or_update_checkin(
             log.employee, first, "IN", session_key
@@ -291,12 +379,22 @@ def _reconcile_monthly_log(log):
                 update_modified=False,
             )
 
-    return {"sessions": len(sessions), "checkins": checkins}
+    return {"sessions": len(sessions), "checkins": checkins, "pending": pending}
+
+
+def _find_employee(employee_no):
+    return frappe.db.get_value(
+        "Employee",
+        {"attendance_device_id": employee_no, "status": "Active"},
+        "name",
+    )
 
 
 def _normalize_device_events(device, raw_events, duplicate_seconds):
     timezone_name = device.timezone or DEFAULT_TIMEZONE
     normalized = []
+    unmatched = []
+    seen_unmatched = set()
     for raw in raw_events:
         if int(raw.get("major") or 0) != 5 or int(raw.get("minor") or 0) != 75:
             continue
@@ -304,12 +402,11 @@ def _normalize_device_events(device, raw_events, duplicate_seconds):
         employee_no = str(raw.get("employeeNoString") or "").strip()
         if not event_dt or not employee_no:
             continue
-        employee = frappe.db.get_value(
-            "Employee",
-            {"attendance_device_id": employee_no, "status": "Active"},
-            "name",
-        )
+        employee = _find_employee(employee_no)
         if not employee:
+            if employee_no not in seen_unmatched:
+                unmatched.append(employee_no)
+                seen_unmatched.add(employee_no)
             continue
         normalized.append(
             {
@@ -320,7 +417,7 @@ def _normalize_device_events(device, raw_events, duplicate_seconds):
                 "device_serial": device.serial_number or device.device_id or device.ip,
             }
         )
-    return _group_events(normalized, duplicate_seconds)
+    return _group_events(normalized, duplicate_seconds), unmatched
 
 
 def _scheduler_start(to_datetime):
@@ -328,6 +425,17 @@ def _scheduler_start(to_datetime):
     return local_now.replace(
         hour=0, minute=0, second=0, microsecond=0
     ).replace(tzinfo=None)
+
+
+def _pending_log_names(days=3):
+    since = frappe.utils.now_datetime() - timedelta(days=days)
+    rows = frappe.get_all(
+        MOVEMENT_ENTRY_DOCTYPE,
+        filters={"event_time": [">=", since]},
+        fields=["parent"],
+        limit_page_length=0,
+    )
+    return {row.parent for row in rows if row.parent}
 
 
 def sync_all_devices(
@@ -369,25 +477,32 @@ def sync_all_devices(
         "movement_created": 0,
         "sessions": 0,
         "checkins": 0,
+        "pending_sessions": 0,
         "unmatched": 0,
+        "unmatched_employee_ids": [],
         "errors": 0,
     }
 
     for device in devices:
         try:
             raw_events = _fetch_events(device, from_datetime, to_datetime)
-            normalized = _normalize_device_events(
+            normalized, unmatched = _normalize_device_events(
                 device, raw_events, duplicate_seconds
             )
             all_events.extend(normalized)
             totals["fetched"] += len(raw_events)
             totals["processed"] += len(normalized)
+            totals["unmatched"] += len(unmatched)
+            totals["unmatched_employee_ids"].extend(
+                f"{device.device_name or device.ip}: {employee_no}"
+                for employee_no in unmatched
+            )
             frappe.db.set_value(
                 "Biometric Device",
                 device.name,
                 {
                     "last_sync": frappe.utils.now_datetime(),
-                    "last_sync_status": f"Fetched {len(raw_events)}; processed {len(normalized)} employee events",
+                    "last_sync_status": f"Fetched {len(raw_events)}; processed {len(normalized)} employee events; unmatched {len(unmatched)}",
                 },
                 update_modified=False,
             )
@@ -399,6 +514,8 @@ def sync_all_devices(
                     "serial_number": device.serial_number,
                     "fetched": len(raw_events),
                     "processed": len(normalized),
+                    "unmatched": len(unmatched),
+                    "unmatched_employee_ids": unmatched,
                 }
             )
         except Exception as exc:
@@ -439,13 +556,17 @@ def sync_all_devices(
                 f"Hikvision movement event save failed: {event['event_key']}",
             )
 
-    for log_name in affected:
+    # Reconcile newly affected logs and recent logs whose 12-hour release window
+    # may have elapsed since the previous scheduler run.
+    reconcile_logs = affected | _pending_log_names(days=3)
+    for log_name in reconcile_logs:
         try:
             result = _reconcile_monthly_log(
                 frappe.get_doc(MOVEMENT_DOCTYPE, log_name)
             )
             totals["sessions"] += result["sessions"]
             totals["checkins"] += result["checkins"]
+            totals["pending_sessions"] += result["pending"]
         except Exception:
             totals["errors"] += 1
             frappe.log_error(
@@ -453,12 +574,21 @@ def sync_all_devices(
                 f"Hikvision movement reconciliation failed: {log_name}",
             )
 
+    totals["unmatched_employee_ids"] = sorted(set(totals["unmatched_employee_ids"]))
     frappe.db.commit()
+    if totals["unmatched"]:
+        status = "partial"
+    else:
+        status = "success" if totals["errors"] == 0 else "partial"
     return {
-        "status": "success" if totals["errors"] == 0 else "partial",
+        "status": status,
         **totals,
         "devices": results,
-        "message": f"Fetched {totals['fetched']} events; stored {totals['movement_created']} new movement events; reconciled {totals['sessions']} device sessions.",
+        "message": (
+            f"Fetched {totals['fetched']} events; stored {totals['movement_created']} new movement events; "
+            f"reconciled {totals['sessions']} device sessions; created/updated {totals['checkins']} checkins; "
+            f"{totals['pending_sessions']} sessions are waiting for shift end + {ATTENDANCE_RELEASE_DELAY_HOURS} hours."
+        ),
     }
 
 
@@ -474,14 +604,16 @@ def sync_device(device_name, from_datetime, to_datetime):
             "message": f"Device not found: {device_name}",
         }
     raw_events = _fetch_events(device, from_datetime, to_datetime)
-    normalized = _normalize_device_events(
+    normalized, unmatched = _normalize_device_events(
         device,
         raw_events,
         max(int(settings.duplicate_seconds or DEFAULT_DUPLICATE_SECONDS), 0),
     )
     return {
-        "status": "success",
+        "status": "success" if not unmatched else "partial",
         "device": device_name,
         "fetched": len(raw_events),
         "processed": len(normalized),
+        "unmatched": len(unmatched),
+        "unmatched_employee_ids": unmatched,
     }
