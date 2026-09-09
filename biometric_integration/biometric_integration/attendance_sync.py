@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 from hashlib import sha1
 from zoneinfo import ZoneInfo
 
@@ -310,39 +310,21 @@ def _create_or_update_checkin(employee, row, log_type, session_key):
     device = _get_device_for_row(row)
     latitude = device.latitude if device and device.latitude is not None else None
     longitude = device.longitude if device and device.longitude is not None else None
+
     if latitude is None or longitude is None:
         raise RuntimeError(
-            f"Latitude and longitude are required for biometric check-in. Device '{row.device_name}' ({row.device_serial_number}) has no configured coordinates."
+            f"Latitude and longitude are required for biometric check-in. "
+            f"Device '{row.device_name}' ({row.device_serial_number}) has no configured coordinates."
         )
 
     full_key = f"{session_key}:{log_type}"
+
+    # Existing biometric check-in: preserve it exactly as it is.
     existing = _find_existing_checkin(employee, row, log_type, session_key)
     if existing:
-        checkin = frappe.get_doc("Employee Checkin", existing.name)
-        changed = False
-        values = {
-            "employee": employee,
-            "time": row.event_time,
-            "log_type": log_type,
-            "device_id": row.device_serial_number or row.device_name,
-            "latitude": latitude,
-            "longitude": longitude,
-            "biometric_session_key": full_key,
-        }
-        for fieldname, value in values.items():
-            if getattr(checkin, fieldname, None) != value:
-                setattr(checkin, fieldname, value)
-                changed = True
-        if meta.has_field("biometric_event_key") and checkin.biometric_event_key != row.event_key:
-            checkin.biometric_event_key = row.event_key
-            changed = True
-        if meta.has_field("biometric_movement_log") and checkin.biometric_movement_log != row.parent:
-            checkin.biometric_movement_log = row.parent
-            changed = True
-        if changed:
-            checkin.save(ignore_permissions=True)
-        return checkin.name
+        return existing.name
 
+    # Create a new biometric check-in.
     checkin = frappe.new_doc("Employee Checkin")
     checkin.employee = employee
     checkin.time = row.event_time
@@ -351,31 +333,32 @@ def _create_or_update_checkin(employee, row, log_type, session_key):
     checkin.latitude = latitude
     checkin.longitude = longitude
     checkin.biometric_session_key = full_key
+
     if meta.has_field("biometric_event_key"):
         checkin.biometric_event_key = row.event_key
+
     if meta.has_field("biometric_movement_log"):
         checkin.biometric_movement_log = row.parent
+
     try:
         checkin.insert(ignore_permissions=True)
     except frappe.DuplicateEntryError:
-        # A legacy/native unique constraint may find an older check-in that
-        # predates the biometric keys. Re-read it and update instead of failing.
-        existing = _find_existing_checkin(employee, row, log_type, session_key)
-        if not existing:
-            raise
-        checkin = frappe.get_doc("Employee Checkin", existing.name)
-        checkin.employee = employee
-        checkin.time = row.event_time
-        checkin.log_type = log_type
-        checkin.device_id = row.device_serial_number or row.device_name
-        checkin.latitude = latitude
-        checkin.longitude = longitude
-        checkin.biometric_session_key = full_key
-        if meta.has_field("biometric_event_key"):
-            checkin.biometric_event_key = row.event_key
-        if meta.has_field("biometric_movement_log"):
-            checkin.biometric_movement_log = row.parent
-        checkin.save(ignore_permissions=True)
+        # Never overwrite an existing/manual HR check-in.
+        existing = frappe.db.get_value(
+            "Employee Checkin",
+            {
+                "employee": employee,
+                "time": row.event_time,
+                "log_type": log_type,
+            },
+            "name",
+        )
+
+        if existing:
+            return existing
+
+        raise
+
     return checkin.name
 
 
@@ -488,11 +471,13 @@ def _scheduler_start(to_datetime):
     ).replace(tzinfo=None)
 
 
-def _pending_log_names(days=3):
-    since = frappe.utils.now_datetime() - timedelta(days=days)
+def _pending_log_names():
     rows = frappe.get_all(
         MOVEMENT_ENTRY_DOCTYPE,
-        filters={"event_time": [">=", since]},
+        filters=[
+            ["employee_checkin", "is", "not set"],
+            ["direction", "in", ["IN", "OUT"]],
+        ],
         fields=["parent"],
         limit_page_length=0,
     )
@@ -606,10 +591,10 @@ def sync_all_devices(
             event["event_dt"], device.timezone or DEFAULT_TIMEZONE
         )
         log = _get_or_create_monthly_log(event["employee"], month)
+        affected.add(log.name)
         try:
             if _save_new_movement_event(log, device, event):
                 totals["movement_created"] += 1
-                affected.add(log.name)
         except Exception:
             totals["errors"] += 1
             frappe.log_error(
@@ -617,7 +602,7 @@ def sync_all_devices(
                 f"Hikvision movement event save failed: {event['event_key']}",
             )
 
-    reconcile_logs = affected | _pending_log_names(days=3)
+    reconcile_logs = affected | _pending_log_names()
     for log_name in reconcile_logs:
         try:
             result = _reconcile_monthly_log(
