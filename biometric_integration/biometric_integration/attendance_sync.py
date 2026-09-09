@@ -162,9 +162,50 @@ def _find_checkin_by_session(session_key):
     return frappe.db.get_value(
         "Employee Checkin",
         {"biometric_session_key": session_key},
-        ["name", "time", "log_type", "device_id", "biometric_event_key"],
+        ["name", "employee", "time", "log_type", "device_id", "biometric_event_key"],
         as_dict=True,
     )
+
+
+def _find_checkin_by_event_key(event_key):
+    meta = frappe.get_meta("Employee Checkin")
+    if not meta.has_field("biometric_event_key") or not event_key:
+        return None
+    return frappe.db.get_value(
+        "Employee Checkin",
+        {"biometric_event_key": event_key},
+        ["name", "employee", "time", "log_type", "device_id", "biometric_event_key", "biometric_session_key"],
+        as_dict=True,
+    )
+
+
+def _find_existing_checkin(employee, row, log_type, session_key):
+    """Find an existing check-in so a deleted/reimported movement log never creates a duplicate."""
+    existing = _find_checkin_by_event_key(row.event_key)
+    if existing:
+        return existing
+
+    existing = _find_checkin_by_session(f"{session_key}:{log_type}")
+    if existing:
+        return existing
+
+    # Final fallback for records created before the biometric session/event keys
+    # were added. Match the same employee, timestamp, device and log type.
+    filters = {
+        "employee": employee,
+        "time": row.event_time,
+        "log_type": log_type,
+        "device_id": row.device_serial_number or row.device_name,
+    }
+    name = frappe.db.get_value("Employee Checkin", filters, "name")
+    if name:
+        return frappe.db.get_value(
+            "Employee Checkin",
+            name,
+            ["name", "employee", "time", "log_type", "device_id", "biometric_event_key", "biometric_session_key"],
+            as_dict=True,
+        )
+    return None
 
 
 def _get_device_for_row(row):
@@ -240,11 +281,9 @@ def _get_shift_release_time(employee, event_time):
         except ValueError:
             try:
                 start_time = datetime.strptime(start_time, "%H:%M").time()
-            except ValueError:
-                start_time = None
+        except ValueError:
+            start_time = None
 
-    # If the shift end clock time is earlier than the shift start clock time,
-    # the shift ends on the following calendar day.
     if start_time and end_time < start_time:
         shift_end += timedelta(days=1)
 
@@ -277,16 +316,18 @@ def _create_or_update_checkin(employee, row, log_type, session_key):
         )
 
     full_key = f"{session_key}:{log_type}"
-    existing = _find_checkin_by_session(full_key)
+    existing = _find_existing_checkin(employee, row, log_type, session_key)
     if existing:
         checkin = frappe.get_doc("Employee Checkin", existing.name)
         changed = False
         values = {
+            "employee": employee,
             "time": row.event_time,
             "log_type": log_type,
             "device_id": row.device_serial_number or row.device_name,
             "latitude": latitude,
             "longitude": longitude,
+            "biometric_session_key": full_key,
         }
         for fieldname, value in values.items():
             if getattr(checkin, fieldname, None) != value:
@@ -314,7 +355,27 @@ def _create_or_update_checkin(employee, row, log_type, session_key):
         checkin.biometric_event_key = row.event_key
     if meta.has_field("biometric_movement_log"):
         checkin.biometric_movement_log = row.parent
-    checkin.insert(ignore_permissions=True)
+    try:
+        checkin.insert(ignore_permissions=True)
+    except frappe.DuplicateEntryError:
+        # A legacy/native unique constraint may find an older check-in that
+        # predates the biometric keys. Re-read it and update instead of failing.
+        existing = _find_existing_checkin(employee, row, log_type, session_key)
+        if not existing:
+            raise
+        checkin = frappe.get_doc("Employee Checkin", existing.name)
+        checkin.employee = employee
+        checkin.time = row.event_time
+        checkin.log_type = log_type
+        checkin.device_id = row.device_serial_number or row.device_name
+        checkin.latitude = latitude
+        checkin.longitude = longitude
+        checkin.biometric_session_key = full_key
+        if meta.has_field("biometric_event_key"):
+            checkin.biometric_event_key = row.event_key
+        if meta.has_field("biometric_movement_log"):
+            checkin.biometric_movement_log = row.parent
+        checkin.save(ignore_permissions=True)
     return checkin.name
 
 
@@ -556,8 +617,6 @@ def sync_all_devices(
                 f"Hikvision movement event save failed: {event['event_key']}",
             )
 
-    # Reconcile newly affected logs and recent logs whose 12-hour release window
-    # may have elapsed since the previous scheduler run.
     reconcile_logs = affected | _pending_log_names(days=3)
     for log_name in reconcile_logs:
         try:
