@@ -4,9 +4,13 @@
   "title": "Biometric Integration",
   "module": "Biometric Integration",
   "icon": "fingerprint",
+  "is_standard": 1,
   "is_hidden": 0,
   "public": 1,
   "content": "[]",
+  "shortcuts": [
+    {"type":"DocType","label":"Biometric Integration Settings","link_to":"Biometric Integration Settings"}
+  ],
   "links": [
     {"type":"Card Break","label":"Biometric Attendance"},
     {"type":"Link","label":"Biometric Integration Settings","link_type":"DocType","link_to":"Biometric Integration Settings"},
