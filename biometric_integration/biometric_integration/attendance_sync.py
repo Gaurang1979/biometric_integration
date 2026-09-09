@@ -281,8 +281,8 @@ def _get_shift_release_time(employee, event_time):
         except ValueError:
             try:
                 start_time = datetime.strptime(start_time, "%H:%M").time()
-        except ValueError:
-            start_time = None
+            except ValueError:
+                    start_time = None
 
     if start_time and end_time < start_time:
         shift_end += timedelta(days=1)
