@@ -5,6 +5,9 @@ app_description = "Direct Hikvision biometric device integration for ERPNext HRM
 app_email = ""
 app_license = "MIT"
 
+# ERPNext/HRMS are required for the biometric integration to function.
+required_apps = ["erpnext", "hrms"]
+
 scheduler_events = {
     "cron": {
         "*/10 * * * *": [
@@ -12,6 +15,11 @@ scheduler_events = {
         ]
     }
 }
+
+# Run after both `bench install-app` and every `bench migrate`/`bench update`.
+after_install = [
+    "biometric_integration.install.ensure_custom_fields"
+]
 
 after_migrate = [
     "biometric_integration.install.ensure_custom_fields"
