@@ -4,6 +4,8 @@ app_publisher = "Sundaram Technologies"
 app_description = "Direct Hikvision biometric device integration for ERPNext HRMS"
 app_email = ""
 app_license = "MIT"
+app_icon = "octicon octicon-fingerprint"
+app_logo_url = "/assets/biometric_integration/images/biometric_integration_logo.svg"
 
 # ERPNext/HRMS are required for the biometric integration to function.
 required_apps = ["erpnext", "hrms"]
