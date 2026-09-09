@@ -18,8 +18,9 @@
     {"type":"Link","label":"Biometric Integration Settings","link_type":"DocType","link_to":"Biometric Integration Settings"},
     {"type":"Card Break","label":"Movement Logs","link_count":1},
     {"type":"Link","label":"Daily Employee Movement Log","link_type":"DocType","link_to":"Daily Employee Movement Log"},
-    {"type":"Card Break","label":"Reports","link_count":1},
-    {"type":"Link","label":"Biometric Movement Log","link_type":"Report","link_to":"Biometric Movement Log","is_query_report":1,"report_ref_doctype":"Daily Employee Movement Log"}
+    {"type":"Card Break","label":"Reports","link_count":2},
+    {"type":"Link","label":"Biometric Movement Log","link_type":"Report","link_to":"Biometric Movement Log","is_query_report":1,"report_ref_doctype":"Daily Employee Movement Log"},
+    {"type":"Link","label":"Biometric Attendance Summary","link_type":"Report","link_to":"Biometric Attendance Summary","is_query_report":1,"report_ref_doctype":"Employee Checkin"}
   ],
   "roles": [
     {"role":"System Manager"},
