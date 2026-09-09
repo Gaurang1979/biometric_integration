@@ -9,14 +9,17 @@
   "public": 1,
   "content": "[]",
   "shortcuts": [
-    {"type":"DocType","label":"Biometric Integration Settings","link_to":"Biometric Integration Settings"}
+    {"type":"DocType","label":"Biometric Integration Settings","link_to":"Biometric Integration Settings"},
+    {"type":"DocType","label":"Daily Employee Movement Log","link_to":"Daily Employee Movement Log"}
   ],
   "links": [
-    {"type":"Card Break","label":"Biometric Attendance"},
-    {"type":"Link","label":"Biometric Integration Settings","link_type":"DocType","link_to":"Biometric Integration Settings"},
+    {"type":"Card Break","label":"Biometric Attendance","link_count":2},
     {"type":"Link","label":"Biometric Device","link_type":"DocType","link_to":"Biometric Device"},
+    {"type":"Link","label":"Biometric Integration Settings","link_type":"DocType","link_to":"Biometric Integration Settings"},
+    {"type":"Card Break","label":"Movement Logs","link_count":1},
     {"type":"Link","label":"Daily Employee Movement Log","link_type":"DocType","link_to":"Daily Employee Movement Log"},
-    {"type":"Link","label":"Employee Checkin","link_type":"DocType","link_to":"Employee Checkin"}
+    {"type":"Card Break","label":"Reports","link_count":1},
+    {"type":"Link","label":"Biometric Movement Log","link_type":"Report","link_to":"Biometric Movement Log","is_query_report":1,"report_ref_doctype":"Daily Employee Movement Log"}
   ],
   "roles": [
     {"role":"System Manager"},
