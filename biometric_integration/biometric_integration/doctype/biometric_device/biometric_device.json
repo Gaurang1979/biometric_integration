@@ -1,26 +1,254 @@
 {
-  "doctype": "DocType",
-  "name": "Biometric Device",
-  "module": "Biometric Integration",
-  "istable": 1,
-  "editable_grid": 1,
-  "fields": [
-    {"fieldname":"enabled","fieldtype":"Check","label":"Enabled","default":"1","in_list_view":1},
-    {"fieldname":"device_name","fieldtype":"Data","label":"Device Name","reqd":1,"in_list_view":1},
-    {"fieldname":"protocol","fieldtype":"Select","label":"Protocol","options":"HTTP\nHTTPS","default":"HTTP","reqd":1},
-    {"fieldname":"ip","fieldtype":"Data","label":"IP Address / Host","reqd":1},
-    {"fieldname":"port","fieldtype":"Int","label":"Port","default":"80","reqd":1},
-    {"fieldname":"username","fieldtype":"Data","label":"Username","reqd":1},
-    {"fieldname":"password","fieldtype":"Password","label":"Password","reqd":1},
-    {"fieldname":"device_id","fieldtype":"Data","label":"Device ID","read_only":1},
-    {"fieldname":"model","fieldtype":"Data","label":"Model","read_only":1},
-    {"fieldname":"serial_number","fieldtype":"Data","label":"Serial Number","read_only":1,"in_list_view":1},
-    {"fieldname":"mac_address","fieldtype":"Data","label":"MAC Address","read_only":1},
-    {"fieldname":"latitude","fieldtype":"Float","label":"Latitude","precision":6},
-    {"fieldname":"longitude","fieldtype":"Float","label":"Longitude","precision":6},
-    {"fieldname":"timezone","fieldtype":"Data","label":"Timezone","default":"Asia/Kolkata"},
-    {"fieldname":"last_sync","fieldtype":"Datetime","label":"Last Sync","read_only":1},
-    {"fieldname":"last_sync_status","fieldtype":"Small Text","label":"Last Sync Status","read_only":1}
-  ],
-  "permissions": []
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:device_name",
+ "creation": "2026-09-11 00:00:00.000000",
+ "default_view": "List",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "device_name",
+  "enabled",
+  "column_break_conn1",
+  "protocol",
+  "location",
+  "column_break_conn2",
+  "connection_section",
+  "ip",
+  "port",
+  "column_break_cred1",
+  "username",
+  "password",
+  "device_info_section",
+  "device_id",
+  "model",
+  "device_serial_number",
+  "column_break_dinfo1",
+  "mac_address",
+  "firmware_version",
+  "sync_section",
+  "timezone_offset",
+  "sync_lookback_minutes",
+  "column_break_sync1",
+  "last_sync_datetime",
+  "last_sync_status",
+  "is_online",
+  "last_seen_online",
+  "clock_drift_seconds",
+  "time_sync_ok"
+ ],
+ "fields": [
+  {
+   "fieldname": "device_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Device Name",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Enabled"
+  },
+  {
+   "fieldname": "column_break_conn1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "http",
+   "fieldname": "protocol",
+   "fieldtype": "Select",
+   "label": "Protocol",
+   "options": "http\nhttps"
+  },
+  {
+   "fieldname": "column_break_conn2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Optional grouping - assign this device to a Location so Employee access rules can target the whole location instead of listing devices one by one.",
+   "fieldname": "location",
+   "fieldtype": "Link",
+   "label": "Location",
+   "options": "Biometric Location"
+  },
+  {
+   "fieldname": "connection_section",
+   "fieldtype": "Section Break",
+   "label": "Connection"
+  },
+  {
+   "fieldname": "ip",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "IP / Host",
+   "reqd": 1
+  },
+  {
+   "default": "80",
+   "fieldname": "port",
+   "fieldtype": "Int",
+   "label": "Port",
+   "non_negative": 1
+  },
+  {
+   "fieldname": "column_break_cred1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "username",
+   "fieldtype": "Data",
+   "label": "Username",
+   "reqd": 1
+  },
+  {
+   "fieldname": "password",
+   "fieldtype": "Password",
+   "label": "Password",
+   "reqd": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "device_info_section",
+   "fieldtype": "Section Break",
+   "label": "Device Info (auto-fetched)"
+  },
+  {
+   "fieldname": "device_id",
+   "fieldtype": "Data",
+   "label": "Device ID",
+   "read_only": 1
+  },
+  {
+   "fieldname": "model",
+   "fieldtype": "Data",
+   "label": "Model",
+   "read_only": 1
+  },
+  {
+   "fieldname": "device_serial_number",
+   "fieldtype": "Data",
+   "label": "Device Serial Number",
+   "read_only": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "column_break_dinfo1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "mac_address",
+   "fieldtype": "Data",
+   "label": "MAC Address",
+   "read_only": 1
+  },
+  {
+   "fieldname": "firmware_version",
+   "fieldtype": "Data",
+   "label": "Firmware Version",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sync_section",
+   "fieldtype": "Section Break",
+   "label": "Sync Settings"
+  },
+  {
+   "default": "+00:00",
+   "description": "Timezone offset this device reports timestamps in, e.g. +05:30",
+   "fieldname": "timezone_offset",
+   "fieldtype": "Data",
+   "label": "Device Timezone Offset"
+  },
+  {
+   "default": "120",
+   "description": "How far back (minutes) each scheduled sync looks, to safely overlap the previous run and catch late-arriving events.",
+   "fieldname": "sync_lookback_minutes",
+   "fieldtype": "Int",
+   "label": "Sync Lookback (minutes)",
+   "non_negative": 1
+  },
+  {
+   "fieldname": "column_break_sync1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "last_sync_datetime",
+   "fieldtype": "Datetime",
+   "label": "Last Sync At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_sync_status",
+   "fieldtype": "Small Text",
+   "label": "Last Sync Status",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "is_online",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Online",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_seen_online",
+   "fieldtype": "Datetime",
+   "label": "Last Seen Online",
+   "read_only": 1
+  },
+  {
+   "fieldname": "clock_drift_seconds",
+   "fieldtype": "Float",
+   "label": "Clock Drift (seconds)",
+   "precision": "1",
+   "read_only": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "time_sync_ok",
+   "fieldtype": "Check",
+   "label": "Clock In Sync",
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-09-11 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Biometric Integration",
+ "name": "Biometric Device",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "HR Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
 }

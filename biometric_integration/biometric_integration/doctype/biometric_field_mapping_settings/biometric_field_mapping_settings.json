@@ -1,0 +1,105 @@
+{
+ "actions": [],
+ "creation": "2026-09-11 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "mobile_section",
+  "enable_employee_push_to_mobile",
+  "mobile_employee_webhook_url",
+  "column_break_mob1",
+  "enable_employee_push_to_devices",
+  "access_control_section",
+  "enable_device_access_control",
+  "mapping_section",
+  "field_mapping"
+ ],
+ "fields": [
+  {
+   "fieldname": "mobile_section",
+   "fieldtype": "Section Break",
+   "label": "Mobile App Sync"
+  },
+  {
+   "default": "0",
+   "fieldname": "enable_employee_push_to_mobile",
+   "fieldtype": "Check",
+   "label": "Push Employee Changes to Mobile App"
+  },
+  {
+   "depends_on": "eval: doc.enable_employee_push_to_mobile",
+   "description": "Mobile backend endpoint that will receive employee master updates as a POST with the mapped JSON payload.",
+   "fieldname": "mobile_employee_webhook_url",
+   "fieldtype": "Data",
+   "label": "Mobile Employee Webhook URL"
+  },
+  {
+   "fieldname": "column_break_mob1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_employee_push_to_devices",
+   "fieldtype": "Check",
+   "label": "Push Employee Changes to Hikvision Devices"
+  },
+  {
+   "fieldname": "access_control_section",
+   "fieldtype": "Section Break",
+   "label": "Device-Wise Access Control"
+  },
+  {
+   "default": "0",
+   "description": "When enabled, Sync to Devices pushes/revokes each employee's device enrollment based on their Biometric Access rules (Employee > Biometric Access tab). When disabled (default), every employee is enrolled on every enabled device as before.",
+   "fieldname": "enable_device_access_control",
+   "fieldtype": "Check",
+   "label": "Enable Device-Wise Access Control"
+  },
+  {
+   "fieldname": "mapping_section",
+   "fieldtype": "Section Break",
+   "label": "Field Mapping"
+  },
+  {
+   "fieldname": "field_mapping",
+   "fieldtype": "Table",
+   "label": "Field Mapping",
+   "options": "Biometric Field Mapping Row"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-09-11 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Biometric Integration",
+ "name": "Biometric Field Mapping Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "HR Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

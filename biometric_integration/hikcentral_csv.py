@@ -1,0 +1,472 @@
+"""
+DEPRECATED as of v1.1: this module depended on Biometric Integration
+Settings fields (enable_hikcentral_csv_sync, hikcentral_csv_path, etc.)
+that were never added to the doctype, so it never actually ran. It is no
+longer scheduled (see hooks.py). Direct per-device polling now lives in
+device_sync.py, writing straight to Employee Checkin. Left here only for
+reference in case a HikCentral-server CSV export path is wanted again -
+you'd need to add the missing fields back to the Settings doctype first.
+"""
+
+import csv
+import hashlib
+import os
+from collections import defaultdict
+from datetime import datetime, timedelta
+
+import frappe
+
+
+CSV_COLUMNS = [
+    "Person ID",
+    "First Name Last Name",
+    "Department",
+    "Access Date",
+    "Card Swiping Time",
+    "Attendance Status",
+    "Device Name",
+    "Device Serial No.",
+    "Authentication Mode",
+    "Authentication Result",
+    "Card No.",
+    "Card Reader Name",
+    "Direction",
+]
+
+
+# Events that represent successful biometric/card authentication.
+# The list can be expanded when other HikCentral event types are observed.
+SUCCESS_EVENT_PATTERNS = (
+    "Pass",
+    "Through",
+    "VerifyPass",
+    "IdentifyPass",
+)
+
+
+def _clean(value):
+    return (value or "").strip()
+
+
+def _event_is_valid(row):
+    authentication_mode = _clean(row.get("Authentication Mode"))
+    authentication_result = _clean(row.get("Authentication Result"))
+
+    # If HikCentral supplies Authentication Result, reject explicit failures.
+    if authentication_result:
+        failed_values = {
+            "failed",
+            "failure",
+            "fail",
+            "denied",
+            "deny",
+            "false",
+            "0",
+        }
+
+        if authentication_result.lower() in failed_values:
+            return False
+
+    if not authentication_mode:
+        return False
+
+    # Your current HikCentral export has values such as:
+    # ACSEventFaceVerifyPass
+    # ACSEventFingerThrough
+    #
+    # Accept successful biometric/access events.
+    mode_lower = authentication_mode.lower()
+
+    if any(pattern.lower() in mode_lower for pattern in SUCCESS_EVENT_PATTERNS):
+        return True
+
+    # Do not automatically accept unknown events.
+    return False
+
+
+def _parse_row(row):
+    person_id = _clean(row.get("Person ID"))
+    access_date = _clean(row.get("Access Date"))
+    swipe_time = _clean(row.get("Card Swiping Time"))
+
+    if not person_id or not access_date or not swipe_time:
+        return None
+
+    try:
+        event_dt = datetime.strptime(
+            f"{access_date} {swipe_time}",
+            "%Y-%m-%d %H:%M:%S",
+        )
+    except ValueError:
+        return None
+
+    return {
+        "person_id": person_id,
+        "name": _clean(row.get("First Name Last Name")),
+        "department": _clean(row.get("Department")),
+        "event_dt": event_dt,
+        "attendance_status": _clean(row.get("Attendance Status")),
+        "device_name": _clean(row.get("Device Name")),
+        "device_serial": _clean(row.get("Device Serial No.")),
+        "authentication_mode": _clean(row.get("Authentication Mode")),
+        "authentication_result": _clean(row.get("Authentication Result")),
+        "card_no": _clean(row.get("Card No.")),
+        "reader_name": _clean(row.get("Card Reader Name")),
+        "direction": _clean(row.get("Direction")),
+    }
+
+
+def _make_event_key(event):
+    raw = "|".join(
+        [
+            event["person_id"],
+            event["event_dt"].strftime("%Y-%m-%d %H:%M:%S"),
+            event["device_serial"],
+            event["device_name"],
+        ]
+    )
+
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _find_employee(person_id):
+    employees = frappe.get_all(
+        "Employee",
+        filters={
+            "hikcentral_person_id": person_id,
+            "status": "Active",
+        },
+        fields=["name"],
+        limit_page_length=1,
+    )
+
+    if employees:
+        return employees[0].name
+
+    return None
+
+
+def _get_last_checkin(employee, event_dt):
+    records = frappe.get_all(
+        "Employee Checkin",
+        filters={
+            "employee": employee,
+            "time": ["<", event_dt],
+        },
+        fields=["name", "time", "log_type"],
+        order_by="time desc",
+        limit_page_length=1,
+    )
+
+    return records[0] if records else None
+
+
+def _determine_log_type(employee, event):
+    direction = _clean(event.get("direction")).upper()
+
+    if direction in ("IN", "OUT"):
+        return direction
+
+    previous = _get_last_checkin(
+        employee,
+        event["event_dt"],
+    )
+
+    if not previous:
+        return "IN"
+
+    previous_type = previous.get("log_type")
+
+    if previous_type == "IN":
+        return "OUT"
+
+    return "IN"
+
+
+def _group_events(events, duplicate_seconds=30):
+    """
+    Groups Face + Finger/Card events generated by the same physical punch.
+
+    Example:
+
+        09:14:11 Face
+        09:14:18 Finger
+
+    becomes one event at 09:14:11.
+    """
+
+    grouped = []
+
+    events = sorted(
+        events,
+        key=lambda x: (
+            x["person_id"],
+            x["event_dt"],
+            x["device_serial"],
+        ),
+    )
+
+    for event in events:
+        if not grouped:
+            grouped.append(event)
+            continue
+
+        previous = grouped[-1]
+
+        same_person = (
+            previous["person_id"] == event["person_id"]
+        )
+
+        same_device = (
+            previous["device_serial"] == event["device_serial"]
+        )
+
+        time_difference = (
+            event["event_dt"] - previous["event_dt"]
+        ).total_seconds()
+
+        if (
+            same_person
+            and same_device
+            and 0 <= time_difference <= duplicate_seconds
+        ):
+            # Keep the earliest event.
+            continue
+
+        grouped.append(event)
+
+    return grouped
+
+
+def _create_employee_checkin(employee, event):
+    event_key = _make_event_key(event)
+
+    existing = frappe.db.exists(
+        "Employee Checkin",
+        {
+            "hikcentral_event_key": event_key,
+        },
+    )
+
+    if existing:
+        return "duplicate"
+
+    log_type = _determine_log_type(employee, event)
+
+    doc = frappe.new_doc("Employee Checkin")
+
+    doc.employee = employee
+    doc.time = event["event_dt"]
+    doc.log_type = log_type
+    doc.device_id = event["device_serial"]
+
+    if hasattr(doc, "hikcentral_event_key"):
+        doc.hikcentral_event_key = event_key
+
+    doc.insert(ignore_permissions=True)
+
+    return "created"
+
+
+@frappe.whitelist()
+def sync_hikcentral_csv():
+    """
+    Main HikCentral CSV synchronization function.
+    """
+
+    settings = frappe.get_single("Biometric Integration Settings")
+
+    if not settings.get("enable_hikcentral_csv_sync"):
+        return {
+            "status": "disabled",
+            "message": "HikCentral CSV synchronization is disabled.",
+        }
+
+    csv_path = settings.get("hikcentral_csv_path")
+
+    if not csv_path:
+        frappe.throw("HikCentral CSV File is not configured.")
+
+    if not os.path.isfile(csv_path):
+        frappe.throw(
+            f"HikCentral CSV file does not exist: {csv_path}"
+        )
+
+    duplicate_seconds = (
+        settings.get("hikcentral_duplicate_seconds") or 30
+    )
+
+    events = []
+
+    with open(
+        csv_path,
+        "r",
+        encoding="utf-8-sig",
+        errors="replace",
+        newline="",
+    ) as file:
+
+        reader = csv.DictReader(file, skipinitialspace=True)
+
+        for row in reader:
+
+            # Normalize column names because HikCentral exports
+            # tabs/spaces after commas.
+            normalized = {
+                _clean(key): _clean(value)
+                for key, value in row.items()
+                if key is not None
+            }
+
+            if not _event_is_valid(normalized):
+                continue
+
+            event = _parse_row(normalized)
+
+            if event:
+                events.append(event)
+
+    events = _group_events(
+        events,
+        duplicate_seconds=duplicate_seconds,
+    )
+
+    created = 0
+    duplicates = 0
+    missing_employees = 0
+    errors = 0
+
+    for event in events:
+
+        employee = _find_employee(event["person_id"])
+
+        if not employee:
+            missing_employees += 1
+
+            frappe.log_error(
+                f"""
+HikCentral Person ID: {event['person_id']}
+Name: {event['name']}
+Date/Time: {event['event_dt']}
+Device: {event['device_name']}
+Device Serial: {event['device_serial']}
+
+No active ERPNext Employee was found with
+hikcentral_person_id = {event['person_id']}
+""",
+                "HikCentral Employee Mapping Missing",
+            )
+
+            continue
+
+        try:
+            result = _create_employee_checkin(
+                employee,
+                event,
+            )
+
+            if result == "created":
+                created += 1
+            else:
+                duplicates += 1
+
+        except Exception:
+            errors += 1
+
+            frappe.log_error(
+                frappe.get_traceback(),
+                "HikCentral CSV Attendance Error",
+            )
+
+    frappe.db.commit()
+
+    # Update synchronization information.
+    try:
+        file_stat = os.stat(csv_path)
+
+        settings.hikcentral_last_sync_time = datetime.now()
+        settings.hikcentral_last_file_modified = (
+            datetime.fromtimestamp(file_stat.st_mtime)
+        )
+        settings.hikcentral_last_rows_read = len(events)
+        settings.hikcentral_last_records_created = created
+        settings.hikcentral_last_duplicates = duplicates
+        settings.hikcentral_last_errors = errors
+
+        settings.save(ignore_permissions=True)
+        frappe.db.commit()
+
+    except Exception:
+        frappe.log_error(
+            frappe.get_traceback(),
+            "HikCentral Sync Statistics Error",
+        )
+
+    return {
+        "status": "success",
+        "rows_processed": len(events),
+        "created": created,
+        "duplicates": duplicates,
+        "missing_employees": missing_employees,
+        "errors": errors,
+    }
+
+
+@frappe.whitelist()
+def test_hikcentral_csv():
+    """
+    Reads the CSV without creating Employee Checkins.
+    Useful for testing.
+    """
+
+    settings = frappe.get_single("Biometric Integration Settings")
+
+    csv_path = settings.get("hikcentral_csv_path")
+
+    if not csv_path:
+        return {
+            "status": "error",
+            "message": "CSV path is not configured.",
+        }
+
+    if not os.path.isfile(csv_path):
+        return {
+            "status": "error",
+            "message": f"CSV file not found: {csv_path}",
+        }
+
+    total = 0
+    valid = 0
+
+    with open(
+        csv_path,
+        "r",
+        encoding="utf-8-sig",
+        errors="replace",
+        newline="",
+    ) as file:
+
+        reader = csv.DictReader(file, skipinitialspace=True)
+
+        for row in reader:
+
+            total += 1
+
+            normalized = {
+                _clean(key): _clean(value)
+                for key, value in row.items()
+                if key is not None
+            }
+
+            if _event_is_valid(normalized):
+                event = _parse_row(normalized)
+
+                if event:
+                    valid += 1
+
+    return {
+        "status": "success",
+        "file": csv_path,
+        "total_csv_rows": total,
+        "valid_events": valid,
+    }

@@ -1,0 +1,81 @@
+{
+ "actions": [],
+ "creation": "2026-09-11 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "rule_type",
+  "device",
+  "location",
+  "column_break_ebar1",
+  "access_enabled",
+  "valid_from",
+  "valid_to"
+ ],
+ "fields": [
+  {
+   "default": "Device",
+   "fieldname": "rule_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Applies To",
+   "options": "Device\nLocation",
+   "reqd": 1
+  },
+  {
+   "depends_on": "eval: doc.rule_type == 'Device'",
+   "fieldname": "device",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Device",
+   "mandatory_depends_on": "eval: doc.rule_type == 'Device'",
+   "options": "Biometric Device"
+  },
+  {
+   "depends_on": "eval: doc.rule_type == 'Location'",
+   "fieldname": "location",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Location",
+   "mandatory_depends_on": "eval: doc.rule_type == 'Location'",
+   "options": "Biometric Location"
+  },
+  {
+   "fieldname": "column_break_ebar1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "description": "Uncheck to explicitly block, rather than just omit, this device/location.",
+   "fieldname": "access_enabled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Access Allowed"
+  },
+  {
+   "description": "Leave blank for no start restriction.",
+   "fieldname": "valid_from",
+   "fieldtype": "Date",
+   "label": "Valid From"
+  },
+  {
+   "description": "Leave blank for no end date (e.g. permanent staff). Set for contractors/temporary access.",
+   "fieldname": "valid_to",
+   "fieldtype": "Date",
+   "label": "Valid To"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-09-11 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Biometric Integration",
+ "name": "Employee Biometric Access Row",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

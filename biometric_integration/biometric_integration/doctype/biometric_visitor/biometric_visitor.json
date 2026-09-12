@@ -1,0 +1,159 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "hash",
+ "creation": "2026-09-11 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "visitor_name",
+  "visitor_code",
+  "column_break_bv1",
+  "host_employee",
+  "purpose",
+  "phone",
+  "status",
+  "validity_section",
+  "valid_from",
+  "valid_to",
+  "column_break_bv2",
+  "face_image",
+  "access_section",
+  "device_access",
+  "log_section",
+  "provisioning_log"
+ ],
+ "fields": [
+  {
+   "fieldname": "visitor_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Visitor Name",
+   "reqd": 1
+  },
+  {
+   "description": "Used as the device employeeNo - must be unique and not collide with any Employee's Attendance Device ID.",
+   "fieldname": "visitor_code",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Visitor Code (Device ID)",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "column_break_bv1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "host_employee",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Host Employee",
+   "options": "Employee"
+  },
+  {
+   "fieldname": "purpose",
+   "fieldtype": "Small Text",
+   "label": "Purpose of Visit"
+  },
+  {
+   "fieldname": "phone",
+   "fieldtype": "Data",
+   "label": "Phone"
+  },
+  {
+   "default": "Active",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Active\nExpired\nRevoked",
+   "read_only": 1
+  },
+  {
+   "fieldname": "validity_section",
+   "fieldtype": "Section Break",
+   "label": "Validity"
+  },
+  {
+   "fieldname": "valid_from",
+   "fieldtype": "Datetime",
+   "label": "Valid From",
+   "reqd": 1
+  },
+  {
+   "description": "Auto-revoked from all devices once this passes (scheduled job runs every 15 min).",
+   "fieldname": "valid_to",
+   "fieldtype": "Datetime",
+   "label": "Valid To",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_bv2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "face_image",
+   "fieldtype": "Attach Image",
+   "label": "Face Photo"
+  },
+  {
+   "fieldname": "access_section",
+   "fieldtype": "Section Break",
+   "label": "Device / Location Access"
+  },
+  {
+   "description": "Unlike Employees, an empty list here means NO access anywhere (deny by default) - add rows for exactly the devices/locations this visitor should be allowed at.",
+   "fieldname": "device_access",
+   "fieldtype": "Table",
+   "label": "Allowed Devices / Locations",
+   "options": "Employee Biometric Access Row"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "log_section",
+   "fieldtype": "Section Break",
+   "label": "Provisioning Log"
+  },
+  {
+   "fieldname": "provisioning_log",
+   "fieldtype": "Small Text",
+   "label": "Last Provisioning Log",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-09-11 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Biometric Integration",
+ "name": "Biometric Visitor",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "HR Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

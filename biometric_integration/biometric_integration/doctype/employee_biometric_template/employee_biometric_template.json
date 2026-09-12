@@ -1,0 +1,127 @@
+{
+ "actions": [],
+ "autoname": "field:employee",
+ "creation": "2026-09-11 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "employee",
+  "employee_name",
+  "column_break_ebt1",
+  "source_device",
+  "captured_on",
+  "face_section",
+  "face_image",
+  "fingerprint_section",
+  "fingerprint_1_template",
+  "column_break_ebt2",
+  "fingerprint_2_template",
+  "replication_log"
+ ],
+ "fields": [
+  {
+   "fieldname": "employee",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Employee",
+   "options": "Employee",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fetch_from": "employee.employee_name",
+   "fieldname": "employee_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Employee Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_ebt1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "source_device",
+   "fieldtype": "Link",
+   "label": "Captured At Device",
+   "options": "Biometric Device"
+  },
+  {
+   "fieldname": "captured_on",
+   "fieldtype": "Datetime",
+   "label": "Captured On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "face_section",
+   "fieldtype": "Section Break",
+   "label": "Face"
+  },
+  {
+   "description": "Pulled from the source device and kept here so it can be re-pushed to any device without needing the original device again.",
+   "fieldname": "face_image",
+   "fieldtype": "Attach Image",
+   "label": "Face Image"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "fingerprint_section",
+   "fieldtype": "Section Break",
+   "label": "Fingerprint (experimental - not guaranteed portable across device models)"
+  },
+  {
+   "fieldname": "fingerprint_1_template",
+   "fieldtype": "Long Text",
+   "label": "Fingerprint Template (Finger 1, base64)"
+  },
+  {
+   "fieldname": "column_break_ebt2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "fingerprint_2_template",
+   "fieldtype": "Long Text",
+   "label": "Fingerprint Template (Finger 2, base64)"
+  },
+  {
+   "fieldname": "replication_log",
+   "fieldtype": "Small Text",
+   "label": "Last Replication Log",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-09-11 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Biometric Integration",
+ "name": "Employee Biometric Template",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "HR Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
