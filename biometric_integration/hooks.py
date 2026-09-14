@@ -44,7 +44,8 @@ add_to_apps_screen = [
 
 # include js in doctype views
 # doctype_js = {"doctype" : "public/js/doctype.js"}
-doctype_js = {"Employee": "public/js/employee.js"}
+doctype_js = {"Employee": "public/js/employee.js", "Employee Checkin": "public/js/employee_checkin.js"}
+doctype_list_js = {"Employee Checkin": "public/js/employee_checkin.js"}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
@@ -83,8 +84,8 @@ doctype_js = {"Employee": "public/js/employee.js"}
 # Installation
 # ------------
 
-# before_install = "biometric_integration.install.before_install"
-# after_install = "biometric_integration.install.after_install"
+after_install = "biometric_integration.biometric_integration.custom_fields.create_biometric_custom_fields"
+after_migrate = "biometric_integration.biometric_integration.custom_fields.create_biometric_custom_fields"
 
 # Uninstallation
 # ------------
@@ -142,7 +143,11 @@ doc_events = {
     "Employee": {
         "after_insert": "biometric_integration.biometric_integration.employee_sync.queue_employee_sync",
         "on_update": "biometric_integration.biometric_integration.employee_sync.queue_employee_sync",
-    }
+    },
+    "Employee Checkin": {
+        "before_insert": "biometric_integration.biometric_integration.checkin_hooks.before_insert",
+        "on_update": "biometric_integration.biometric_integration.checkin_hooks.on_update",
+    },
 }
 
 # doc_events = {
@@ -170,8 +175,14 @@ scheduler_events = {
             "biometric_integration.biometric_integration.device_health.check_all_devices"
         ]
     },
+    "daily": [
+        # Catches days that were "Pending Shift" (punches recorded, but no
+        # Shift Assignment existed yet) - e.g. HR assigns the Shift a few
+        # days late. Never touches a manually created/edited checkin.
+        "biometric_integration.biometric_integration.reconciliation.reconcile_all_pending"
+    ],
     "weekly": [
-        "biometric_integration.biometric_integration.doctype.biometric_attendance_log.biometric_attendance_log.delete_old_attendance_logs"
+        "biometric_integration.biometric_integration.movement.delete_old_movements"
     ],
     # NOTE: HikCentral CSV sync (biometric_integration.hikcentral_csv.sync_hikcentral_csv)
     # is deprecated and intentionally not scheduled - it depended on settings

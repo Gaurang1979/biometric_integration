@@ -35,7 +35,7 @@
   {
    "fieldname": "biometric_attendance_log_settigns_section",
    "fieldtype": "Section Break",
-   "label": "Biometric Attendance Log Settigns"
+   "label": "Employee Movement Log Settings"
   },
   {
    "depends_on": "eval: doc.enable_biometric_attendance_log_deletion",
@@ -44,7 +44,8 @@
    "label": "Delete Logs After (Days)",
    "mandatory_depends_on": "eval: doc.enable_biometric_attendance_log_deletion",
    "non_negative": 1,
-   "precision": "0"
+   "precision": "0",
+   "description": ""
   },
   {
    "fieldname": "column_break_ktit",
@@ -58,7 +59,7 @@
    "default": "0",
    "fieldname": "enable_biometric_attendance_log_deletion",
    "fieldtype": "Check",
-   "label": "Enable Biometric Attendance Log Deletion"
+   "label": "Enable Employee Movement Log Deletion"
   },
   {
    "fieldname": "alerts_section",

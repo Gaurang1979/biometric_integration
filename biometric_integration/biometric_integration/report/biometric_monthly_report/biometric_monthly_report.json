@@ -2,7 +2,7 @@
  "add_total_row": 0,
  "columns": [],
  "creation": "2025-02-13 11:21:51.366670",
- "disabled": 0,
+ "disabled": 1,
  "docstatus": 0,
  "doctype": "Report",
  "filters": [],
@@ -15,7 +15,7 @@
  "name": "Biometric Monthly Report",
  "owner": "Administrator",
  "prepared_report": 0,
- "ref_doctype": "Biometric Attendance Log",
+ "ref_doctype": "Employee Movement",
  "report_name": "Biometric Monthly Report",
  "report_type": "Script Report",
  "roles": [

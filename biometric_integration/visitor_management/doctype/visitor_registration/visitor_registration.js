@@ -1,7 +1,7 @@
 // Copyright (c) 2026, NDV and contributors
 // For license information, please see license.txt
 
-frappe.ui.form.on("Biometric Visitor", {
+frappe.ui.form.on("Visitor Registration", {
 	refresh(frm) {
 		if (frm.is_new()) return;
 

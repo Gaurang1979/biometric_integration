@@ -35,32 +35,8 @@
    "icon": "book-down",
    "indent": 0,
    "keep_closed": 0,
-   "label": "Daily Report",
-   "link_to": "Biometric Daily Report",
-   "link_type": "Report",
-   "show_arrow": 0,
-   "type": "Link"
-  },
-  {
-   "child": 1,
-   "collapsible": 1,
-   "icon": "book-down",
-   "indent": 0,
-   "keep_closed": 0,
    "label": "Leave Report",
    "link_to": "Biometric Leave Report",
-   "link_type": "Report",
-   "show_arrow": 0,
-   "type": "Link"
-  },
-  {
-   "child": 1,
-   "collapsible": 1,
-   "icon": "book-down",
-   "indent": 0,
-   "keep_closed": 0,
-   "label": "Monthly Report",
-   "link_to": "Biometric Monthly Report",
    "link_type": "Report",
    "show_arrow": 0,
    "type": "Link"
@@ -81,8 +57,8 @@
    "icon": "users",
    "indent": 0,
    "keep_closed": 0,
-   "label": "Attendance Log",
-   "link_to": "Biometric Attendance Log",
+   "label": "Employee Movement",
+   "link_to": "Employee Movement",
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link"

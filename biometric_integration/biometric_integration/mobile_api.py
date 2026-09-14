@@ -15,8 +15,6 @@ Endpoints:
   GET  /api/method/biometric_integration.biometric_integration.mobile_api.mobile_employee_list
 """
 
-import hashlib
-
 import frappe
 from frappe.utils import get_datetime
 
@@ -25,46 +23,45 @@ from biometric_integration.biometric_integration.doctype.biometric_field_mapping
 )
 
 
-def _event_key(employee, time, source_event_id=None, device_id=None):
-	if source_event_id:
-		raw = f"mobile|{employee}|{source_event_id}"
-	else:
-		raw = f"mobile|{employee}|{time}|{device_id or ''}"
-	return hashlib.sha256(raw.encode("utf-8")).hexdigest()
-
-
 def _create_mobile_checkin(employee, time, log_type=None, latitude=None, longitude=None, device_id=None, source_event_id=None):
-	key = _event_key(employee, time, source_event_id, device_id)
-
-	if frappe.db.exists("Employee Checkin", {"biometric_event_id": key}):
-		return {"status": "duplicate", "employee": employee, "time": str(time)}
-
+	"""Same raw-punch-first flow as device_sync.py: record into Employee
+	Movement, then try immediate reconciliation into Employee Checkin.
+	Note: latitude/longitude are accepted for API compatibility but are not
+	currently persisted onto the movement log or the reconciled checkin -
+	only the punch time is."""
 	if not frappe.db.exists("Employee", employee):
 		return {"status": "error", "employee": employee, "message": "Unknown employee"}
 
-	doc = frappe.new_doc("Employee Checkin")
-	doc.employee = employee
-	doc.time = get_datetime(time)
-	if log_type:
-		doc.log_type = log_type
-	doc.device_id = device_id or "Mobile App"
-	if latitude is not None:
-		doc.latitude = latitude
-	if longitude is not None:
-		doc.longitude = longitude
-	if hasattr(doc, "biometric_event_id"):
-		doc.biometric_event_id = key
-	doc.insert(ignore_permissions=True)
+	from biometric_integration.biometric_integration import movement as movement_mod
+	from biometric_integration.biometric_integration import reconciliation
+
+	event_dt = get_datetime(time)
+	device_name = device_id or "Mobile App"
+
+	movement, row, is_new = movement_mod.add_punch(employee, event_dt, device_name)
+	if not is_new:
+		return {"status": "duplicate", "employee": employee, "time": str(time)}
+
+	reconciliation.reconcile_day(employee, event_dt.date(), row)
+	movement.save(ignore_permissions=True)
 	frappe.db.commit()
 
-	from biometric_integration.biometric_integration.anti_passback import check_and_flag
+	checkin_name = row.get("checkout_ref") or row.get("checkin_ref")
+	if checkin_name:
+		from biometric_integration.biometric_integration.anti_passback import check_and_flag
 
-	try:
-		check_and_flag(employee, doc.device_id, doc.time, doc.name)
-	except Exception:
-		frappe.log_error(frappe.get_traceback(), "Anti-Passback Check Error")
+		try:
+			check_and_flag(employee, device_name, event_dt, checkin_name)
+		except Exception:
+			frappe.log_error(frappe.get_traceback(), "Anti-Passback Check Error")
 
-	return {"status": "created", "employee": employee, "time": str(time), "name": doc.name}
+	return {
+		"status": "created",
+		"employee": employee,
+		"time": str(time),
+		"movement": movement.name,
+		"checkin": checkin_name,
+	}
 
 
 @frappe.whitelist()

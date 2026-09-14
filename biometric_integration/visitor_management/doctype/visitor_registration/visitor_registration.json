@@ -13,6 +13,10 @@
   "purpose",
   "phone",
   "status",
+  "visit_log_section",
+  "check_in_time",
+  "column_break_vl1",
+  "check_out_time",
   "validity_section",
   "valid_from",
   "valid_to",
@@ -72,6 +76,27 @@
    "read_only": 1
   },
   {
+   "fieldname": "visit_log_section",
+   "fieldtype": "Section Break",
+   "label": "Visit Log"
+  },
+  {
+   "fieldname": "check_in_time",
+   "fieldtype": "Datetime",
+   "label": "Check-in Time",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "column_break_vl1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "check_out_time",
+   "fieldtype": "Datetime",
+   "label": "Check-out Time",
+   "in_list_view": 1
+  },
+  {
    "fieldname": "validity_section",
    "fieldtype": "Section Break",
    "label": "Validity"
@@ -127,8 +152,8 @@
  "links": [],
  "modified": "2026-09-11 00:00:00.000000",
  "modified_by": "Administrator",
- "module": "Biometric Integration",
- "name": "Biometric Visitor",
+ "module": "Visitor Management",
+ "name": "Visitor Registration",
  "naming_rule": "Random",
  "owner": "Administrator",
  "permissions": [

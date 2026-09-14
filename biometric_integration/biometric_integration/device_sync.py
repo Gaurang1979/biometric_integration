@@ -4,15 +4,15 @@
 """
 Direct multi-device Hikvision sync.
 
-Replaces the old single-device `sync_attendance()` (which wrote into the
-custom "Biometric Attendance Log" doctype) and the HikCentral-CSV path.
-This module polls every enabled "Biometric Device" over ISAPI and writes
-straight into the standard ERPNext HR "Employee Checkin" doctype, which is
-what Shift Type auto-attendance / Payroll actually consume.
+Replaces the old single-device `sync_attendance()` and the HikCentral-CSV
+path. Polls every enabled "Biometric Device" over ISAPI. Every raw punch is
+recorded into that employee's monthly "Employee Movement" log, and the
+day's first/last punch is reconciled straight into the standard ERPNext HR
+"Employee Checkin" doctype (what Shift Type auto-attendance / Payroll
+actually consume) - see movement.py and reconciliation.py.
 """
 
-import hashlib
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import frappe
 import requests
@@ -42,31 +42,30 @@ def _employee_for_device_no(employee_no):
 	)
 
 
-def _make_event_key(device_name, emp_no, event_dt):
-	raw = f"{device_name}|{emp_no}|{event_dt.strftime('%Y-%m-%d %H:%M:%S')}"
-	return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+def _process_punch(device_name, employee, event_dt):
+	"""Record the raw punch in Employee Movement, then try to reconcile it into
+	Employee Checkin right away (works if a Shift Assignment already resolves
+	for this employee/date). If not, it stays 'Pending Shift' in Employee
+	Movement until the scheduled reconcile_all_pending catches it later -
+	e.g. once HR assigns the Shift retroactively."""
+	from biometric_integration.biometric_integration import movement as movement_mod
+	from biometric_integration.biometric_integration import reconciliation
 
-
-def _create_checkin(device_name, employee, emp_no, event_dt):
-	event_key = _make_event_key(device_name, emp_no, event_dt)
-
-	if frappe.db.exists("Employee Checkin", {"biometric_event_id": event_key}):
+	movement, row, is_new = movement_mod.add_punch(employee, event_dt, device_name)
+	if not is_new:
 		return "duplicate"
 
-	doc = frappe.new_doc("Employee Checkin")
-	doc.employee = employee
-	doc.time = event_dt
-	doc.device_id = device_name
-	if hasattr(doc, "biometric_event_id"):
-		doc.biometric_event_id = event_key
-	doc.insert(ignore_permissions=True)
+	reconciliation.reconcile_day(employee, event_dt.date(), row)
+	movement.save(ignore_permissions=True)
 
-	from biometric_integration.biometric_integration.anti_passback import check_and_flag
+	checkin_name = row.get("checkout_ref") or row.get("checkin_ref")
+	if checkin_name:
+		from biometric_integration.biometric_integration.anti_passback import check_and_flag
 
-	try:
-		check_and_flag(employee, device_name, event_dt, doc.name)
-	except Exception:
-		frappe.log_error(frappe.get_traceback(), "Anti-Passback Check Error")
+		try:
+			check_and_flag(employee, device_name, event_dt, checkin_name)
+		except Exception:
+			frappe.log_error(frappe.get_traceback(), "Anti-Passback Check Error")
 
 	return "created"
 
@@ -131,14 +130,14 @@ def _fetch_and_store_from_device(device, decrypted_password, start_dt, end_dt):
 				continue
 
 			try:
-				result = _create_checkin(device.device_name, employee, emp_no, event_dt)
+				result = _process_punch(device.device_name, employee, event_dt)
 				if result == "created":
 					created += 1
 				else:
 					duplicates += 1
 			except Exception:
 				errors += 1
-				frappe.log_error(frappe.get_traceback(), "Biometric Checkin Creation Error")
+				frappe.log_error(frappe.get_traceback(), "Biometric Punch Processing Error")
 
 		position += len(events)
 		if len(events) < BATCH_SIZE:

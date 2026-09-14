@@ -1,3 +1,8 @@
+# DISABLED (2026-09-14): queried the retired "Biometric Attendance Log" /
+# "Biometric Attendance Punch Table" doctypes, which were merged into
+# "Employee Movement" / "Daily Movement Log" (see movement.py). Needs a
+# rewrite against the new schema before re-enabling.
+
 import frappe
 from frappe import _
 from datetime import datetime, timedelta

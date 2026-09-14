@@ -1,0 +1,108 @@
+{
+ "actions": [],
+ "creation": "2026-09-14 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "date",
+  "first_punch",
+  "last_punch",
+  "punch_count",
+  "column_break_dml1",
+  "total_in_minutes",
+  "total_out_minutes",
+  "checkin_status",
+  "section_break_dml2",
+  "punch_log",
+  "checkin_ref",
+  "checkout_ref"
+ ],
+ "fields": [
+  {
+   "fieldname": "date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "first_punch",
+   "fieldtype": "Time",
+   "in_list_view": 1,
+   "label": "First Punch"
+  },
+  {
+   "fieldname": "last_punch",
+   "fieldtype": "Time",
+   "in_list_view": 1,
+   "label": "Last Punch"
+  },
+  {
+   "fieldname": "punch_count",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Punches"
+  },
+  {
+   "fieldname": "column_break_dml1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "total_in_minutes",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Total In Minutes"
+  },
+  {
+   "fieldname": "total_out_minutes",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Total Out Minutes"
+  },
+  {
+   "fieldname": "checkin_status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "\nPending Shift\nReconciled\nOut of Shift Window"
+  },
+  {
+   "fieldname": "section_break_dml2",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "punch_log",
+   "fieldtype": "Small Text",
+   "label": "Raw Punch Log"
+  },
+  {
+   "fieldname": "checkin_ref",
+   "fieldtype": "Link",
+   "label": "Check-in Ref",
+   "options": "Employee Checkin",
+   "read_only": 1
+  },
+  {
+   "fieldname": "checkout_ref",
+   "fieldtype": "Link",
+   "label": "Check-out Ref",
+   "options": "Employee Checkin",
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-09-14 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Biometric Integration",
+ "name": "Daily Movement Log",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

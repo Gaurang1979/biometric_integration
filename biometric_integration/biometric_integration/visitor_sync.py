@@ -57,7 +57,7 @@ def _ensure_visitor_on_device(device, visitor_doc):
 @frappe.whitelist()
 def provision_visitor(visitor):
 	frappe.only_for(("System Manager", "HR Manager"))
-	visitor_doc = frappe.get_doc("Biometric Visitor", visitor)
+	visitor_doc = frappe.get_doc("Visitor Registration", visitor)
 
 	if visitor_doc.status != "Active":
 		return {"status": "error", "message": f"Visitor status is '{visitor_doc.status}', not Active."}
@@ -100,7 +100,7 @@ def provision_visitor(visitor):
 @frappe.whitelist()
 def revoke_visitor(visitor, new_status="Revoked"):
 	frappe.only_for(("System Manager", "HR Manager"))
-	visitor_doc = frappe.get_doc("Biometric Visitor", visitor)
+	visitor_doc = frappe.get_doc("Visitor Registration", visitor)
 
 	log_lines = []
 	for device in frappe.get_all("Biometric Device", filters={"enabled": 1}, fields=["name", "device_name"]):
@@ -124,7 +124,7 @@ def revoke_visitor(visitor, new_status="Revoked"):
 def expire_visitors():
 	"""Scheduled: revoke and mark Expired any Active visitor past valid_to."""
 	overdue = frappe.get_all(
-		"Biometric Visitor",
+		"Visitor Registration",
 		filters={"status": "Active", "valid_to": ["<", frappe.utils.now_datetime()]},
 		pluck="name",
 	)
