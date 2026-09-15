@@ -69,8 +69,8 @@
    "icon": "file-pen",
    "indent": 0,
    "keep_closed": 0,
-   "label": "Manual Punch",
-   "link_to": "Biometric Manual Punch",
+   "label": "New Employee Checkin",
+   "link_to": "Employee Checkin",
    "link_type": "DocType",
    "show_arrow": 0,
    "type": "Link"

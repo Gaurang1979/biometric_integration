@@ -16,9 +16,18 @@ import frappe
 
 
 def before_insert(doc, method=None):
+	if frappe.db.exists("Employee Checkin", {"employee": doc.employee, "time": doc.time}):
+		frappe.throw(
+			f"A Checkin already exists for {doc.employee} at {doc.time}.",
+			title="Duplicate Checkin",
+		)
+
 	if not doc.get("custom_entry_type"):
 		# Our own sync/reconciliation code always sets this explicitly before
-		# insert; anything left blank was created directly by a Desk user.
+		# insert; anything left blank was created directly by a Desk user -
+		# this also covers what used to be the separate "Biometric Manual
+		# Punch" wizard doctype, since that just called Employee Checkin's
+		# own insert() without setting this field either.
 		doc.custom_entry_type = "Manual"
 
 	if doc.custom_entry_type == "Auto" and not doc.get("custom_original_snapshot"):
