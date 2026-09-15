@@ -6,12 +6,13 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
+  "general_tab",
   "info_html",
   "biometric_attendance_log_settigns_section",
-  "enable_biometric_attendance_log_deletion",
   "delete_logs_after_days",
   "column_break_ktit",
   "column_break_sezi",
+  "enable_biometric_attendance_log_deletion",
   "alerts_section",
   "device_offline_alert_recipients",
   "anti_passback_section",
@@ -24,9 +25,16 @@
   "column_break_late1",
   "late_arrival_fallback_recipients",
   "clock_drift_section",
-  "max_clock_drift_seconds"
+  "max_clock_drift_seconds",
+  "devices_tab",
+  "devices"
  ],
  "fields": [
+  {
+   "fieldname": "general_tab",
+   "fieldtype": "Tab Break",
+   "label": "General"
+  },
   {
    "fieldname": "info_html",
    "fieldtype": "HTML",
@@ -137,6 +145,17 @@
    "fieldtype": "Int",
    "label": "Max Allowed Clock Drift (seconds)",
    "non_negative": 1
+  },
+  {
+   "fieldname": "devices_tab",
+   "fieldtype": "Tab Break",
+   "label": "Devices"
+  },
+  {
+   "fieldname": "devices",
+   "fieldtype": "Table",
+   "label": "Biometric Devices",
+   "options": "Biometric Device"
   }
  ],
  "grid_page_length": 50,

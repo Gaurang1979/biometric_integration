@@ -168,7 +168,6 @@ scheduler_events = {
         # attendance-latency requirements (e.g. "*/5 * * * *" for 5 min).
         "*/15 * * * *": [
             "biometric_integration.biometric_integration.device_sync.sync_all_devices",
-            "biometric_integration.biometric_integration.visitor_sync.expire_visitors",
             "biometric_integration.biometric_integration.attendance_alerts.check_late_arrivals"
         ],
         "*/10 * * * *": [

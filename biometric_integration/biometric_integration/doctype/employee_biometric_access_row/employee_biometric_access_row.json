@@ -35,11 +35,10 @@
   {
    "depends_on": "eval: doc.rule_type == 'Location'",
    "fieldname": "location",
-   "fieldtype": "Link",
+   "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Location",
-   "mandatory_depends_on": "eval: doc.rule_type == 'Location'",
-   "options": "Biometric Location"
+   "mandatory_depends_on": "eval: doc.rule_type == 'Location'"
   },
   {
    "fieldname": "column_break_ebar1",

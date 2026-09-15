@@ -1,6 +1,10 @@
 # Copyright (c) 2026, NDV and contributors
 # For license information, please see license.txt
 
+# Child table (istable=1) since 2026-09-14, living on the "Devices" tab of
+# Biometric Integration Settings instead of its own standalone list - see
+# patches/v1_6 for how existing standalone device docs got adopted in.
+
 import xml.etree.ElementTree as ET
 
 import frappe

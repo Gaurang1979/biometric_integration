@@ -16,7 +16,7 @@
  "name": "Biometric Leave Report",
  "owner": "Administrator",
  "prepared_report": 0,
- "ref_doctype": "Biometric Leave Log",
+ "ref_doctype": "Leave Application",
  "report_name": "Biometric Leave Report",
  "report_type": "Script Report",
  "roles": [

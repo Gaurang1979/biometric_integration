@@ -10,3 +10,5 @@ biometric_integration.patches.v1_4.rename_visitor_to_registration
 [post_model_sync]
 # Patches added in this section will be executed after doctypes are migrated
 biometric_integration.patches.v1_5.merge_attendance_log_into_movement
+biometric_integration.patches.v1_6.adopt_devices_into_settings
+biometric_integration.patches.v1_7.remove_visitor_management
