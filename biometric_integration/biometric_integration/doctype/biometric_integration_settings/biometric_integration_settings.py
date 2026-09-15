@@ -5,11 +5,11 @@ from frappe.model.document import Document
 
 
 class BiometricIntegrationSettings(Document):
-	"""Global, non-device-specific settings only.
-
-	Device connections: see Biometric Device (one record per Hikvision device).
-	Field mapping to devices / mobile app: see Biometric Field Mapping Settings.
-	Sync logic: see device_sync.py (devices) and mobile_api.py (mobile app).
+	"""Single doctype, everything under one roof across three tabs:
+	General (retention/alerts/anti-passback/late-arrival), Devices (one row
+	per Hikvision device), and Field Mapping (ERPNext <-> device/mobile app
+	field mapping). Sync logic: see device_sync.py (devices) and
+	mobile_api.py (mobile app).
 	"""
 
 	pass

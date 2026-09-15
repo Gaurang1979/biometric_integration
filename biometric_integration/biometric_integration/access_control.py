@@ -25,9 +25,7 @@ from biometric_integration.biometric_integration.biometric_enrollment import (
 	_push_face_to_device,
 	_push_fingerprint_to_device,
 )
-from biometric_integration.biometric_integration.doctype.biometric_field_mapping_settings.biometric_field_mapping_settings import (
-	get_mapping_rows,
-)
+from biometric_integration.biometric_integration.field_mapping import get_mapping_rows
 from biometric_integration.biometric_integration.doctype.biometric_audit_log.biometric_audit_log import log_action
 from biometric_integration.biometric_integration.employee_sync import _push_to_device
 

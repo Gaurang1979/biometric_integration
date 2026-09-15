@@ -3,8 +3,8 @@
 
 """
 Pushes Employee master changes out to Hikvision devices (ISAPI UserInfo)
-and/or a mobile app webhook, using the mapping configured in
-"Biometric Field Mapping Settings". Hooked from Employee after_insert /
+and/or a mobile app webhook, using the mapping configured on Biometric
+Integration Settings' "Field Mapping" tab. Hooked from Employee after_insert /
 on_update in hooks.py. Runs in a background job so it never slows down
 saving an Employee record.
 """
@@ -13,9 +13,7 @@ import requests
 import frappe
 from requests.auth import HTTPDigestAuth
 
-from biometric_integration.biometric_integration.doctype.biometric_field_mapping_settings.biometric_field_mapping_settings import (
-	get_mapping_rows,
-)
+from biometric_integration.biometric_integration.field_mapping import get_mapping_rows
 
 
 def queue_employee_sync(doc, method=None):
@@ -66,7 +64,7 @@ def _push_to_device(device, employee_doc, rows):
 
 @frappe.whitelist()
 def sync_employee(employee):
-	settings = frappe.get_single("Biometric Field Mapping Settings")
+	settings = frappe.get_single("Biometric Integration Settings")
 	employee_doc = frappe.get_doc("Employee", employee)
 
 	if settings.enable_employee_push_to_devices and not settings.enable_device_access_control:

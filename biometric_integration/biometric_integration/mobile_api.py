@@ -18,9 +18,7 @@ Endpoints:
 import frappe
 from frappe.utils import get_datetime
 
-from biometric_integration.biometric_integration.doctype.biometric_field_mapping_settings.biometric_field_mapping_settings import (
-	get_mapping_rows,
-)
+from biometric_integration.biometric_integration.field_mapping import get_mapping_rows
 
 
 def _create_mobile_checkin(employee, time, log_type=None, latitude=None, longitude=None, device_id=None, source_event_id=None):
@@ -110,7 +108,7 @@ def _mapped_employee_payload(employee_doc, rows):
 @frappe.whitelist()
 def mobile_employee_list(modified_after=None):
 	"""Return active employees for the mobile app to cache locally, with
-	fields mapped per Biometric Field Mapping Settings (target: Mobile App)."""
+	fields mapped per Biometric Integration Settings' Field Mapping tab (target: Mobile App)."""
 	rows = get_mapping_rows("Mobile App", direction="ERPNext to External")
 	filters = {"status": "Active"}
 	if modified_after:

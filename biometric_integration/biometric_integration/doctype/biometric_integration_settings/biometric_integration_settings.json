@@ -27,7 +27,17 @@
   "clock_drift_section",
   "max_clock_drift_seconds",
   "devices_tab",
-  "devices"
+  "devices",
+  "field_mapping_tab",
+  "mobile_section",
+  "enable_employee_push_to_mobile",
+  "mobile_employee_webhook_url",
+  "column_break_mob1",
+  "enable_employee_push_to_devices",
+  "access_control_section",
+  "enable_device_access_control",
+  "mapping_section",
+  "field_mapping"
  ],
  "fields": [
   {
@@ -38,7 +48,7 @@
   {
    "fieldname": "info_html",
    "fieldtype": "HTML",
-   "options": "<p>Device connections now live under <b>Biometric Device</b> (add one record per Hikvision device). Field mapping to devices/mobile app lives under <b>Biometric Field Mapping Settings</b>.</p>"
+   "options": "<p>Devices live under the <b>Devices</b> tab, and field mapping to devices/mobile app lives under the <b>Field Mapping</b> tab, above.</p>"
   },
   {
    "fieldname": "biometric_attendance_log_settigns_section",
@@ -156,6 +166,56 @@
    "fieldtype": "Table",
    "label": "Biometric Devices",
    "options": "Biometric Device"
+  },
+  {
+   "fieldname": "field_mapping_tab",
+   "fieldtype": "Tab Break",
+   "label": "Field Mapping"
+  },
+  {
+   "fieldname": "mobile_section",
+   "fieldtype": "Section Break",
+   "label": "Mobile App Sync"
+  },
+  {
+   "fieldname": "enable_employee_push_to_mobile",
+   "fieldtype": "Check",
+   "label": "Push Employee Changes to Mobile App"
+  },
+  {
+   "fieldname": "mobile_employee_webhook_url",
+   "fieldtype": "Data",
+   "label": "Mobile Employee Webhook URL"
+  },
+  {
+   "fieldname": "column_break_mob1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "enable_employee_push_to_devices",
+   "fieldtype": "Check",
+   "label": "Push Employee Changes to Hikvision Devices"
+  },
+  {
+   "fieldname": "access_control_section",
+   "fieldtype": "Section Break",
+   "label": "Device-Wise Access Control"
+  },
+  {
+   "fieldname": "enable_device_access_control",
+   "fieldtype": "Check",
+   "label": "Enable Device-Wise Access Control"
+  },
+  {
+   "fieldname": "mapping_section",
+   "fieldtype": "Section Break",
+   "label": "Field Mapping"
+  },
+  {
+   "fieldname": "field_mapping",
+   "fieldtype": "Table",
+   "label": "Field Mapping",
+   "options": "Biometric Field Mapping Row"
   }
  ],
  "grid_page_length": 50,

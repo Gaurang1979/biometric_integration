@@ -11,9 +11,7 @@ from biometric_integration.biometric_integration.access_control import _delete_u
 from biometric_integration.biometric_integration.biometric_enrollment import _device_doc, _ensure_device_user
 from biometric_integration.biometric_integration.doctype.biometric_audit_log.biometric_audit_log import log_action
 from biometric_integration.biometric_integration.employee_sync import _push_to_device
-from biometric_integration.biometric_integration.doctype.biometric_field_mapping_settings.biometric_field_mapping_settings import (
-	get_mapping_rows,
-)
+from biometric_integration.biometric_integration.field_mapping import get_mapping_rows
 
 
 @frappe.whitelist()
